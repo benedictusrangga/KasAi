@@ -7,13 +7,13 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
-  title: 'KasAI — Akuntansi Cerdas untuk UMKM Indonesia',
+  title: 'KasAI — Keuangan Bisnis, Semudah Kirim Pesan',
   description:
-    'Catat transaksi lewat Telegram, foto struk, atau suara. AI kami memahami bisnis Anda dan memberikan laporan keuangan real-time.',
-  keywords: ['akuntansi', 'UMKM', 'AI', 'keuangan', 'telegram', 'Indonesia'],
+    'Catat transaksi lewat Telegram, foto struk, atau suara. AI kami memahami bisnis Anda dan memberikan laporan keuangan real-time. Gratis untuk mulai.',
+  keywords: ['keuangan bisnis', 'UMKM', 'AI', 'pembukuan', 'telegram', 'Indonesia', 'kas'],
   openGraph: {
-    title: 'KasAI — Akuntansi Cerdas untuk UMKM Indonesia',
-    description: 'Catat transaksi lewat Telegram, foto struk, atau suara.',
+    title: 'KasAI — Keuangan Bisnis, Semudah Kirim Pesan',
+    description: 'Catat transaksi lewat Telegram, foto struk, atau suara. Laporan keuangan real-time untuk bisnis Anda.',
     type: 'website',
   },
 }

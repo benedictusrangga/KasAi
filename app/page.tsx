@@ -12,7 +12,7 @@ import { LandingCta } from '@/components/landing/cta'
 import { LandingFooter } from '@/components/landing/footer'
 
 export const metadata = {
-  title: 'KasAI — Keuangan Bisnis, Semudah Chat',
+  title: 'KasAI — Keuangan Bisnis, Semudah Kirim Pesan',
   description:
     'Catat transaksi lewat Telegram, foto struk, atau suara. AI kami memahami bisnis Anda dan memberikan laporan keuangan real-time. Gratis untuk mulai.',
 }

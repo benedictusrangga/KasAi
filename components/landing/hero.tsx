@@ -87,41 +87,41 @@ export function LandingHero() {
             </div>
 
             {/* Dashboard content */}
-            <div className="p-5">
-              {/* KPI row — 4 cards, no overflow */}
-              <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="p-4 sm:p-5">
+              {/* KPI row — 2x2 di mobile, 4 kolom di desktop */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4">
                 {[
-                  { label: 'Pemasukan',    value: 'Rp 24,8 jt', change: '+18%', up: true },
-                  { label: 'Pengeluaran',  value: 'Rp 11,2 jt', change: '-5%',  up: false },
-                  { label: 'Laba Bersih',  value: 'Rp 13,6 jt', change: '+31%', up: true },
-                  { label: 'Transaksi',    value: '247',         change: '+12%', up: true },
+                  { label: 'Pemasukan',   value: 'Rp 24,8 jt', change: '+18%', up: true },
+                  { label: 'Pengeluaran', value: 'Rp 11,2 jt', change: '-5%',  up: false },
+                  { label: 'Laba Bersih', value: 'Rp 13,6 jt', change: '+31%', up: true },
+                  { label: 'Transaksi',   value: '247',         change: '+12%', up: true },
                 ].map((kpi) => (
-                  <div key={kpi.label} className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3.5">
-                    <p className="text-[11px] text-white/40 mb-1 truncate">{kpi.label}</p>
-                    <p className="text-base font-bold text-white leading-tight">{kpi.value}</p>
-                    <p className={`text-[11px] mt-1 font-medium ${kpi.up ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <div key={kpi.label} className="rounded-xl bg-white/[0.04] border border-white/[0.06] p-3">
+                    <p className="text-[10px] sm:text-[11px] text-white/40 mb-1">{kpi.label}</p>
+                    <p className="text-sm sm:text-base font-bold text-white leading-tight">{kpi.value}</p>
+                    <p className={`text-[10px] sm:text-[11px] mt-1 font-medium ${kpi.up ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {kpi.change} bulan ini
                     </p>
                   </div>
                 ))}
               </div>
 
-              {/* Chart + transactions row */}
-              <div className="grid grid-cols-5 gap-3">
+              {/* Chart + transactions — stack di mobile, side-by-side di desktop */}
+              <div className="flex flex-col sm:grid sm:grid-cols-5 gap-2 sm:gap-3">
                 {/* Mini bar chart */}
-                <div className="col-span-3 rounded-xl bg-white/[0.04] border border-white/[0.06] p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider">Tren 6 Bulan</p>
-                    <div className="flex gap-3 text-[11px] text-white/40">
+                <div className="sm:col-span-3 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3 sm:p-4">
+                  <div className="flex items-center justify-between mb-2 sm:mb-3">
+                    <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">Tren 6 Bulan</p>
+                    <div className="flex gap-2 sm:gap-3 text-[10px] text-white/40">
                       <span className="flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-violet-500 inline-block" />Masuk
+                        <span className="h-1.5 w-1.5 rounded-full bg-violet-500 inline-block" />Masuk
                       </span>
                       <span className="flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-rose-500 inline-block" />Keluar
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500 inline-block" />Keluar
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-end gap-2 h-16">
+                  <div className="flex items-end gap-1.5 h-12 sm:h-16">
                     {[
                       { in: 55, out: 35 }, { in: 70, out: 45 }, { in: 45, out: 60 },
                       { in: 80, out: 40 }, { in: 65, out: 50 }, { in: 90, out: 42 },
@@ -132,17 +132,17 @@ export function LandingHero() {
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-between mt-2">
+                  <div className="flex justify-between mt-1.5">
                     {['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'].map(m => (
-                      <span key={m} className="text-[10px] text-white/25 flex-1 text-center">{m}</span>
+                      <span key={m} className="text-[9px] text-white/25 flex-1 text-center">{m}</span>
                     ))}
                   </div>
                 </div>
 
                 {/* Recent transactions */}
-                <div className="col-span-2 rounded-xl bg-white/[0.04] border border-white/[0.06] p-4">
-                  <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-3">Terbaru</p>
-                  <div className="space-y-2">
+                <div className="sm:col-span-2 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3 sm:p-4">
+                  <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2 sm:mb-3">Terbaru</p>
+                  <div className="space-y-1.5 sm:space-y-2">
                     {[
                       { desc: 'Bahan baku kopi', amt: '-450rb', src: '💬', color: 'text-rose-400' },
                       { desc: 'Penjualan pagi',  amt: '+1.2jt', src: '✍️', color: 'text-emerald-400' },
