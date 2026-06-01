@@ -11,40 +11,73 @@ const NAV_LINKS = [
   { label: 'Harga',      href: '#harga' },
 ]
 
-/** Clamp a value between min and max */
-const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
+const clamp  = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
 
-/** Ease-out cubic — makes the interpolation feel iOS-like (fast start, gentle settle) */
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
+/** Map raw scroll into a 0→1 progress within a specific scroll window */
+const phase  = (scroll: number, start: number, end: number) =>
+  clamp((scroll - start) / (end - start), 0, 1)
+
+/** iOS-style spring ease: fast start, very gentle settle */
+const spring = (t: number) => 1 - Math.pow(1 - t, 4)
+
+/** Lerp for smooth damping between frames */
+const lerp   = (a: number, b: number, t: number) => a + (b - a) * t
 
 export function LandingNav() {
-  // progress: 0 = top of page (floating pill), 1 = scrolled (full-width bar)
-  const [progress, setProgress]     = useState(0)
+  // Raw scroll value — updated every rAF
+  const scrollRef   = useRef(0)
+  // Smoothed progress values — lerped toward target each frame
+  const p1Ref       = useRef(0) // container shape
+  const p2Ref       = useRef(0) // pill nav width
+  const p3Ref       = useRef(0) // logo + CTA position
+  const rafRef      = useRef<number | null>(null)
+
+  // React state — only updated when values change meaningfully (avoids excess renders)
+  const [p1, setP1] = useState(0)
+  const [p2, setP2] = useState(0)
+  const [p3, setP3] = useState(0)
+
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeHash, setActiveHash] = useState('')
-  const mobileRef                   = useRef<HTMLDivElement>(null)
-  const rafRef                       = useRef<number | null>(null)
+  const mobileRef = useRef<HTMLDivElement>(null)
 
-  /* ── Continuous scroll progress (0→1 over first 80px of scroll) ── */
+  /* ── Animation loop ── */
   useEffect(() => {
-    const SCROLL_RANGE = 80 // px over which transition completes
+    const LERP_SPEED = 0.12 // lower = smoother/slower, higher = snappier
 
-    const onScroll = () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      rafRef.current = requestAnimationFrame(() => {
-        const raw = clamp(window.scrollY / SCROLL_RANGE, 0, 1)
-        setProgress(easeOut(raw))
-      })
+    const tick = () => {
+      const scroll = scrollRef.current
+
+      // Target values — each phase has its own scroll window
+      const t1 = spring(phase(scroll,  0,  60))  // container: 0–60px
+      const t2 = spring(phase(scroll, 15,  80))  // pill nav:  15–80px
+      const t3 = spring(phase(scroll, 30, 100))  // logo/CTA:  30–100px
+
+      // Lerp current toward target — this is what makes it feel "springy"
+      p1Ref.current = lerp(p1Ref.current, t1, LERP_SPEED)
+      p2Ref.current = lerp(p2Ref.current, t2, LERP_SPEED)
+      p3Ref.current = lerp(p3Ref.current, t3, LERP_SPEED)
+
+      // Only trigger re-render if values changed meaningfully
+      const THRESHOLD = 0.001
+      setP1(prev => Math.abs(prev - p1Ref.current) > THRESHOLD ? p1Ref.current : prev)
+      setP2(prev => Math.abs(prev - p2Ref.current) > THRESHOLD ? p2Ref.current : prev)
+      setP3(prev => Math.abs(prev - p3Ref.current) > THRESHOLD ? p3Ref.current : prev)
+
+      rafRef.current = requestAnimationFrame(tick)
     }
 
+    const onScroll = () => { scrollRef.current = window.scrollY }
     window.addEventListener('scroll', onScroll, { passive: true })
+    rafRef.current = requestAnimationFrame(tick)
+
     return () => {
       window.removeEventListener('scroll', onScroll)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
   }, [])
 
-  /* ── Active section via IntersectionObserver ── */
+  /* ── Active section ── */
   useEffect(() => {
     const ids = NAV_LINKS.map((l) => l.href.slice(1))
     const observers: IntersectionObserver[] = []
@@ -73,42 +106,30 @@ export function LandingNav() {
     return () => document.removeEventListener('mousedown', handler)
   }, [mobileOpen])
 
-  /* ── Interpolated style values ── */
-  const p = progress // 0 → 1
+  /* ── Derived style values ── */
 
-  // Outer header padding-top: 12px → 0px
-  const headerPaddingTop = `${12 * (1 - p)}px`
+  // Phase 1 — container shape & background
+  const paddingTop    = 12 * (1 - p1)                          // 12px → 0
+  const sideMargin    = 24 * (1 - p1)                          // 24px → 0
+  const borderRadius  = 16 * (1 - p1)                          // 16px → 0
+  const bgOpacity     = 0.03 + 0.82 * p1                       // near-transparent → dark
+  const borderSide    = 0.08 * (1 - p1)                        // side borders fade out
+  const borderBottom  = 0.08 + 0.02 * p1                       // bottom border stays
 
-  // Horizontal margin: collapses from ~24px to 0
-  const sideMargin = `${24 * (1 - p)}px`
-
-  // Border radius: 16px → 0px
-  const borderRadius = `${16 * (1 - p)}px`
-
-  // Background opacity: near-transparent → 85% opaque dark
-  const bgOpacity = 0.03 + 0.82 * p
-  const bgColor = `rgba(8,8,8,${bgOpacity})`
-
-  // Border opacity: subtle → slightly more visible, then fades to bottom-only
-  const borderOpacity = 0.08 + 0.04 * p
-
-  // Backdrop blur: always on (handled by CSS class)
-
-  // Nav pill width: auto (compact) → calc(100% - 520px)
-  // We interpolate via a CSS custom property trick using inline style
-  // At p=0: pill is auto-width (shrink-0)
-  // At p=1: pill fills center with 260px reserved each side
-  const navPillWidth = p > 0.01
-    ? `calc(${p * 100}% - ${520 * p + (1 - p) * 0}px)`
+  // Phase 2 — pill nav width (grows from center)
+  const navWidth      = p2 > 0.005
+    ? `calc(${p2 * 100}% - ${520 * p2 + 0 * (1 - p2)}px)`
     : 'auto'
+  const navBg         = `rgba(255,255,255,${0.04 - 0.01 * p2})`
+  const navBorder     = `rgba(255,255,255,${0.07 + 0.04 * p2})`
 
-  // Shadow: none → subtle bottom shadow
-  const shadowOpacity = 0.04 * p
-  const boxShadow = p > 0.01
-    ? `0 1px 0 rgba(255,255,255,${shadowOpacity}), 0 ${8 * p}px ${32 * p}px rgba(0,0,0,${0.4 * p})`
-    : `0 ${8}px ${32}px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)`
+  // Phase 3 — logo & CTA move outward (padding increases)
+  const innerPadding  = 20 + 20 * p3                           // 20px → 40px
 
-  const isScrolled = p > 0.5
+  // Shadow builds with p1
+  const shadow = p1 > 0.01
+    ? `0 ${8 * p1}px ${32 * p1}px rgba(0,0,0,${0.5 * p1})`
+    : '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)'
 
   return (
     <>
@@ -123,49 +144,49 @@ export function LandingNav() {
       <header
         ref={mobileRef}
         className="fixed top-0 left-0 right-0 z-50"
-        style={{ paddingTop: headerPaddingTop }}
+        style={{ paddingTop: `${paddingTop}px` }}
       >
         {/* ── Main bar ── */}
         <div
           className="backdrop-blur-2xl"
           style={{
-            marginLeft:   sideMargin,
-            marginRight:  sideMargin,
-            borderRadius: borderRadius,
-            background:    bgColor,
-            borderTop:    `1px solid rgba(255,255,255,${borderOpacity})`,
-            borderRight:  `1px solid rgba(255,255,255,${borderOpacity * (1 - p)})`,
-            borderBottom: `1px solid rgba(255,255,255,${Math.max(borderOpacity, 0.07)})`,
-            borderLeft:   `1px solid rgba(255,255,255,${borderOpacity * (1 - p)})`,
-            boxShadow:    boxShadow,
-            transition:   'none', // driven by rAF, no CSS transition needed
+            marginLeft:   `${sideMargin}px`,
+            marginRight:  `${sideMargin}px`,
+            borderRadius: `${borderRadius}px`,
+            background:   `rgba(8,8,8,${bgOpacity})`,
+            borderTop:    `1px solid rgba(255,255,255,${borderSide})`,
+            borderLeft:   `1px solid rgba(255,255,255,${borderSide})`,
+            borderRight:  `1px solid rgba(255,255,255,${borderSide})`,
+            borderBottom: `1px solid rgba(255,255,255,${borderBottom})`,
+            boxShadow:    shadow,
           }}
         >
-          {/* Inner content — constrained width when fully scrolled */}
           <div
             className="relative flex h-[60px] items-center"
             style={{
-              maxWidth: isScrolled ? '1152px' : 'none',
-              margin:   isScrolled ? '0 auto' : undefined,
-              paddingLeft:  `${20 + 20 * p}px`,
-              paddingRight: `${20 + 20 * p}px`,
+              maxWidth:     '1152px',
+              margin:       '0 auto',
+              paddingLeft:  `${innerPadding}px`,
+              paddingRight: `${innerPadding}px`,
             }}
           >
-            {/* Logo */}
+            {/* Logo — moves left as p3 increases */}
             <div className="flex items-center shrink-0 z-10">
               <KasAILogo href="/" size="md" dark={true} />
             </div>
 
-            {/* Nav pill — absolute centered, width grows from center */}
+            {/* Nav pill — absolute centered, width driven by p2 */}
             <nav
               className="hidden md:flex items-center gap-0.5 rounded-xl px-1.5 py-1 absolute left-1/2 -translate-x-1/2 overflow-hidden"
               style={{
-                width:      navPillWidth,
-                maxWidth:   '680px',
-                minWidth:   'max-content',
-                background: `rgba(255,255,255,${0.04 - 0.01 * p})`,
-                border:     `1px solid rgba(255,255,255,${0.07 + 0.03 * p})`,
-                // No CSS transition — driven by rAF above
+                width:     navWidth,
+                maxWidth:  '680px',
+                minWidth:  'max-content',
+                background: navBg,
+                borderTop:    `1px solid ${navBorder}`,
+                borderLeft:   `1px solid ${navBorder}`,
+                borderRight:  `1px solid ${navBorder}`,
+                borderBottom: `1px solid ${navBorder}`,
               }}
             >
               {NAV_LINKS.map((item) => {
@@ -174,8 +195,8 @@ export function LandingNav() {
                   <a
                     key={item.href}
                     href={item.href}
-                    className={`relative py-1.5 text-[13px] font-medium rounded-lg text-center whitespace-nowrap transition-colors duration-200 ${
-                      p > 0.5 ? 'flex-1' : 'px-4'
+                    className={`relative py-1.5 text-[13px] font-medium rounded-lg text-center whitespace-nowrap transition-colors duration-150 ${
+                      p2 > 0.5 ? 'flex-1' : 'px-4'
                     } ${
                       isActive
                         ? 'text-white bg-white/[0.1]'
@@ -194,7 +215,7 @@ export function LandingNav() {
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Desktop CTA */}
+            {/* CTA — moves right as p3 increases */}
             <div className="hidden md:flex items-center gap-2 shrink-0 z-10">
               <Link
                 href="/sign-in"
@@ -233,8 +254,8 @@ export function LandingNav() {
                   <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
                 ) : (
                   <>
-                    <path d="M2 4.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                    <path d="M2 8h8"    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                    <path d="M2 4.5h12"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                    <path d="M2 8h8"     stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
                     <path d="M2 11.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
                   </>
                 )}
