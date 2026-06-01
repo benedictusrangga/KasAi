@@ -19,7 +19,6 @@ const NAV_ITEMS = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const params = useParams()
-  const router = useRouter()
   const businessId = params.businessId as string | undefined
   const [signingOut, setSigningOut] = useState(false)
 

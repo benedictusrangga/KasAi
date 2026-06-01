@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { LandingThemeProvider } from '@/components/landing/theme-provider'
 import { LandingNav } from '@/components/landing/nav'
 import { LandingHero } from '@/components/landing/hero'
 import { LandingSocialProof } from '@/components/landing/social-proof'
@@ -28,16 +29,18 @@ export default async function LandingPage() {
   if (session?.user) redirect('/dashboard')
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white overflow-x-hidden">
-      <LandingNav />
-      <LandingHero />
-      <LandingSocialProof />
-      <LandingFeatures />
-      <LandingTelegram />
-      <LandingHowItWorks />
-      <LandingPricing />
-      <LandingCta />
-      <LandingFooter />
-    </div>
+    <LandingThemeProvider>
+      <div className="overflow-x-hidden">
+        <LandingNav />
+        <LandingHero />
+        <LandingSocialProof />
+        <LandingFeatures />
+        <LandingTelegram />
+        <LandingHowItWorks />
+        <LandingPricing />
+        <LandingCta />
+        <LandingFooter />
+      </div>
+    </LandingThemeProvider>
   )
 }

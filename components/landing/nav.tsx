@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { KasAILogo } from '@/components/logo'
+import { useTheme } from './theme-provider'
+import { ThemeToggle } from './theme-toggle'
 
 const NAV_LINKS = [
   { label: 'Fitur',      href: '#fitur' },
@@ -12,27 +14,21 @@ const NAV_LINKS = [
 ]
 
 const clamp  = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
-
-/** Map raw scroll into a 0→1 progress within a specific scroll window */
 const phase  = (scroll: number, start: number, end: number) =>
   clamp((scroll - start) / (end - start), 0, 1)
-
-/** iOS-style spring ease: fast start, very gentle settle */
 const spring = (t: number) => 1 - Math.pow(1 - t, 4)
-
-/** Lerp for smooth damping between frames */
 const lerp   = (a: number, b: number, t: number) => a + (b - a) * t
 
 export function LandingNav() {
-  // Raw scroll value — updated every rAF
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+
   const scrollRef   = useRef(0)
-  // Smoothed progress values — lerped toward target each frame
-  const p1Ref       = useRef(0) // container shape
-  const p2Ref       = useRef(0) // pill nav width
-  const p3Ref       = useRef(0) // logo + CTA position
+  const p1Ref       = useRef(0)
+  const p2Ref       = useRef(0)
+  const p3Ref       = useRef(0)
   const rafRef      = useRef<number | null>(null)
 
-  // React state — only updated when values change meaningfully (avoids excess renders)
   const [p1, setP1] = useState(0)
   const [p2, setP2] = useState(0)
   const [p3, setP3] = useState(0)
@@ -41,43 +37,31 @@ export function LandingNav() {
   const [activeHash, setActiveHash] = useState('')
   const mobileRef = useRef<HTMLDivElement>(null)
 
-  /* ── Animation loop ── */
   useEffect(() => {
-    const LERP_SPEED = 0.12 // lower = smoother/slower, higher = snappier
-
+    const LERP_SPEED = 0.12
     const tick = () => {
       const scroll = scrollRef.current
-
-      // Target values — each phase has its own scroll window
-      const t1 = spring(phase(scroll,  0,  60))  // container: 0–60px
-      const t2 = spring(phase(scroll, 15,  80))  // pill nav:  15–80px
-      const t3 = spring(phase(scroll, 30, 100))  // logo/CTA:  30–100px
-
-      // Lerp current toward target — this is what makes it feel "springy"
+      const t1 = spring(phase(scroll,  0,  60))
+      const t2 = spring(phase(scroll, 15,  80))
+      const t3 = spring(phase(scroll, 30, 100))
       p1Ref.current = lerp(p1Ref.current, t1, LERP_SPEED)
       p2Ref.current = lerp(p2Ref.current, t2, LERP_SPEED)
       p3Ref.current = lerp(p3Ref.current, t3, LERP_SPEED)
-
-      // Only trigger re-render if values changed meaningfully
       const THRESHOLD = 0.001
       setP1(prev => Math.abs(prev - p1Ref.current) > THRESHOLD ? p1Ref.current : prev)
       setP2(prev => Math.abs(prev - p2Ref.current) > THRESHOLD ? p2Ref.current : prev)
       setP3(prev => Math.abs(prev - p3Ref.current) > THRESHOLD ? p3Ref.current : prev)
-
       rafRef.current = requestAnimationFrame(tick)
     }
-
     const onScroll = () => { scrollRef.current = window.scrollY }
     window.addEventListener('scroll', onScroll, { passive: true })
     rafRef.current = requestAnimationFrame(tick)
-
     return () => {
       window.removeEventListener('scroll', onScroll)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
   }, [])
 
-  /* ── Active section ── */
   useEffect(() => {
     const ids = NAV_LINKS.map((l) => l.href.slice(1))
     const observers: IntersectionObserver[] = []
@@ -94,7 +78,6 @@ export function LandingNav() {
     return () => observers.forEach((o) => o.disconnect())
   }, [])
 
-  /* ── Close mobile on outside click ── */
   useEffect(() => {
     if (!mobileOpen) return
     const handler = (e: MouseEvent) => {
@@ -106,30 +89,52 @@ export function LandingNav() {
     return () => document.removeEventListener('mousedown', handler)
   }, [mobileOpen])
 
-  /* ── Derived style values ── */
+  const paddingTop    = 12 * (1 - p1)
+  const sideMargin    = 24 * (1 - p1)
+  const borderRadius  = 16 * (1 - p1)
+  const bgOpacity     = isDark ? (0.03 + 0.82 * p1) : (0.4 + 0.55 * p1)
+  const borderSide    = isDark ? (0.08 * (1 - p1)) : (0.12 * (1 - p1))
+  const borderBottom  = isDark ? (0.08 + 0.02 * p1) : (0.12 + 0.03 * p1)
 
-  // Phase 1 — container shape & background
-  const paddingTop    = 12 * (1 - p1)                          // 12px → 0
-  const sideMargin    = 24 * (1 - p1)                          // 24px → 0
-  const borderRadius  = 16 * (1 - p1)                          // 16px → 0
-  const bgOpacity     = 0.03 + 0.82 * p1                       // near-transparent → dark
-  const borderSide    = 0.08 * (1 - p1)                        // side borders fade out
-  const borderBottom  = 0.08 + 0.02 * p1                       // bottom border stays
-
-  // Phase 2 — pill nav width (grows from center)
-  const navWidth      = p2 > 0.005
+  const navWidth = p2 > 0.005
     ? `calc(${p2 * 100}% - ${520 * p2 + 0 * (1 - p2)}px)`
     : 'auto'
-  const navBg         = `rgba(255,255,255,${0.04 - 0.01 * p2})`
-  const navBorder     = `rgba(255,255,255,${0.07 + 0.04 * p2})`
 
-  // Phase 3 — logo & CTA move outward (padding increases)
-  const innerPadding  = 20 + 20 * p3                           // 20px → 40px
+  const navBg     = isDark
+    ? `rgba(255,255,255,${0.04 - 0.01 * p2})`
+    : `rgba(0,0,0,${0.03 - 0.01 * p2})`
+  const navBorder = isDark
+    ? `rgba(255,255,255,${0.07 + 0.04 * p2})`
+    : `rgba(0,0,0,${0.08 + 0.04 * p2})`
 
-  // Shadow builds with p1
-  const shadow = p1 > 0.01
-    ? `0 ${8 * p1}px ${32 * p1}px rgba(0,0,0,${0.5 * p1})`
-    : '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)'
+  const innerPadding = 20 + 20 * p3
+
+  // Logo dan CTA pakai padding minimal — selalu nempel ke tepi
+  const edgePadding = 16
+
+  const bgColor = isDark
+    ? `rgba(8,8,8,${bgOpacity})`
+    : `rgba(255,255,255,${bgOpacity})`
+
+  const borderColorSide   = isDark
+    ? `rgba(255,255,255,${borderSide})`
+    : `rgba(0,0,0,${borderSide})`
+  const borderColorBottom = isDark
+    ? `rgba(255,255,255,${borderBottom})`
+    : `rgba(0,0,0,${borderBottom})`
+
+  const shadow = isDark
+    ? (p1 > 0.01
+        ? `0 ${8 * p1}px ${32 * p1}px rgba(0,0,0,${0.5 * p1})`
+        : '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)')
+    : (p1 > 0.01
+        ? `0 ${8 * p1}px ${32 * p1}px rgba(0,0,0,${0.08 * p1})`
+        : '0 2px 16px rgba(0,0,0,0.06)')
+
+  const textColor       = isDark ? 'rgba(255,255,255,0.5)'  : 'rgba(0,0,0,0.5)'
+  const activeTextColor = isDark ? 'text-white'             : 'text-black'
+  const activeBg        = isDark ? 'bg-white/[0.1]'         : 'bg-black/[0.07]'
+  const hoverBg         = isDark ? 'hover:bg-white/[0.06]'  : 'hover:bg-black/[0.05]'
 
   return (
     <>
@@ -146,18 +151,17 @@ export function LandingNav() {
         className="fixed top-0 left-0 right-0 z-50"
         style={{ paddingTop: `${paddingTop}px` }}
       >
-        {/* ── Main bar ── */}
         <div
           className="backdrop-blur-2xl"
           style={{
             marginLeft:   `${sideMargin}px`,
             marginRight:  `${sideMargin}px`,
             borderRadius: `${borderRadius}px`,
-            background:   `rgba(8,8,8,${bgOpacity})`,
-            borderTop:    `1px solid rgba(255,255,255,${borderSide})`,
-            borderLeft:   `1px solid rgba(255,255,255,${borderSide})`,
-            borderRight:  `1px solid rgba(255,255,255,${borderSide})`,
-            borderBottom: `1px solid rgba(255,255,255,${borderBottom})`,
+            background:   bgColor,
+            borderTop:    `1px solid ${borderColorSide}`,
+            borderLeft:   `1px solid ${borderColorSide}`,
+            borderRight:  `1px solid ${borderColorSide}`,
+            borderBottom: `1px solid ${borderColorBottom}`,
             boxShadow:    shadow,
           }}
         >
@@ -166,23 +170,24 @@ export function LandingNav() {
             style={{
               maxWidth:     '1152px',
               margin:       '0 auto',
-              paddingLeft:  `${innerPadding}px`,
-              paddingRight: `${innerPadding}px`,
+              paddingLeft:  `${edgePadding}px`,
+              paddingRight: `${edgePadding}px`,
             }}
           >
-            {/* Logo — moves left as p3 increases */}
+            {/* Logo — nempel kiri */}
             <div className="flex items-center shrink-0 z-10">
-              <KasAILogo href="/" size="md" dark={true} />
+              <KasAILogo href="/" size="md" dark={isDark} />
             </div>
 
-            {/* Nav pill — absolute centered, width driven by p2 */}
+            {/* Nav pill — absolute centered, melebar saat scroll via p2 */}
             <nav
-              className="hidden md:flex items-center gap-0.5 rounded-xl px-1.5 py-1 absolute left-1/2 -translate-x-1/2 overflow-hidden"
+              className="hidden md:flex items-center gap-0.5 rounded-xl px-1.5 py-1 absolute left-1/2 -translate-x-1/2"
               style={{
-                width:     navWidth,
-                maxWidth:  '680px',
-                minWidth:  'max-content',
-                background: navBg,
+                /* Selalu pakai max-content sebagai minimum, melebar saat scroll */
+                minWidth:     'max-content',
+                width:        p2 > 0.005 ? `${320 + 160 * p2}px` : 'max-content',
+                maxWidth:     '480px',
+                background:   navBg,
                 borderTop:    `1px solid ${navBorder}`,
                 borderLeft:   `1px solid ${navBorder}`,
                 borderRight:  `1px solid ${navBorder}`,
@@ -195,16 +200,17 @@ export function LandingNav() {
                   <a
                     key={item.href}
                     href={item.href}
-                    className={`relative py-1.5 text-[13px] font-medium rounded-lg text-center whitespace-nowrap transition-colors duration-150 ${
-                      p2 > 0.5 ? 'flex-1' : 'px-4'
+                    className={`relative py-1.5 px-4 text-[13px] font-medium rounded-lg text-center whitespace-nowrap transition-colors duration-150 ${
+                      p2 > 0.3 ? 'flex-1' : ''
                     } ${
                       isActive
-                        ? 'text-white bg-white/[0.1]'
-                        : 'text-white/50 hover:text-white/90 hover:bg-white/[0.06]'
+                        ? `${activeTextColor} ${activeBg}`
+                        : `${hoverBg}`
                     }`}
+                    style={{ color: isActive ? undefined : textColor }}
                   >
                     {isActive && (
-                      <span className="absolute inset-0 rounded-lg ring-1 ring-white/[0.12]" />
+                      <span className={`absolute inset-0 rounded-lg ring-1 ${isDark ? 'ring-white/[0.12]' : 'ring-black/[0.1]'}`} />
                     )}
                     {item.label}
                   </a>
@@ -212,14 +218,18 @@ export function LandingNav() {
               })}
             </nav>
 
-            {/* Spacer */}
             <div className="flex-1" />
 
-            {/* CTA — moves right as p3 increases */}
+            {/* CTA — nempel kanan */}
             <div className="hidden md:flex items-center gap-2 shrink-0 z-10">
+              <ThemeToggle />
               <Link
                 href="/sign-in"
-                className="px-4 py-2 text-[13px] font-medium text-white/50 hover:text-white/90 transition-colors duration-200 rounded-lg hover:bg-white/[0.05]"
+                className={`px-4 py-2 text-[13px] font-medium transition-colors duration-200 rounded-lg ${
+                  isDark
+                    ? 'text-white/50 hover:text-white/90 hover:bg-white/[0.05]'
+                    : 'text-black/50 hover:text-black/80 hover:bg-black/[0.05]'
+                }`}
               >
                 Masuk
               </Link>
@@ -243,51 +253,72 @@ export function LandingNav() {
             </div>
 
             {/* Mobile hamburger */}
-            <button
-              aria-label="Toggle menu"
-              aria-expanded={mobileOpen}
-              onClick={() => setMobileOpen((v) => !v)}
-              className="md:hidden flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-white/60 hover:text-white hover:bg-white/[0.08] transition-all duration-200"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                {mobileOpen ? (
-                  <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                ) : (
-                  <>
-                    <path d="M2 4.5h12"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                    <path d="M2 8h8"     stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                    <path d="M2 11.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                  </>
-                )}
-              </svg>
-            </button>
+            <div className="md:hidden flex items-center gap-2">
+              <ThemeToggle />
+              <button
+                aria-label="Toggle menu"
+                aria-expanded={mobileOpen}
+                onClick={() => setMobileOpen((v) => !v)}
+                className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200 ${
+                  isDark
+                    ? 'border border-white/[0.08] bg-white/[0.04] text-white/60 hover:text-white hover:bg-white/[0.08]'
+                    : 'border border-black/[0.08] bg-black/[0.04] text-black/50 hover:text-black hover:bg-black/[0.08]'
+                }`}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  {mobileOpen ? (
+                    <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                  ) : (
+                    <>
+                      <path d="M2 4.5h12"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                      <path d="M2 8h8"     stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                      <path d="M2 11.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                    </>
+                  )}
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ── Mobile dropdown ── */}
+        {/* Mobile dropdown */}
         {mobileOpen && (
-          <div className="mobile-menu-animate md:hidden mx-4 mt-2 rounded-2xl border border-white/[0.08] bg-[#0d0d0d]/95 backdrop-blur-2xl shadow-[0_16px_48px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)] overflow-hidden">
+          <div
+            className={`mobile-menu-animate md:hidden mx-4 mt-2 rounded-2xl overflow-hidden backdrop-blur-2xl ${
+              isDark
+                ? 'border border-white/[0.08] bg-[#0d0d0d]/95 shadow-[0_16px_48px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)]'
+                : 'border border-black/[0.08] bg-white/95 shadow-[0_16px_48px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.8)]'
+            }`}
+          >
             <div className="p-3 space-y-0.5">
               {NAV_LINKS.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center justify-between px-4 py-3 text-sm text-white/60 hover:text-white rounded-xl hover:bg-white/[0.06] transition-all duration-150 group"
+                  className={`flex items-center justify-between px-4 py-3 text-sm rounded-xl transition-all duration-150 group ${
+                    isDark
+                      ? 'text-white/60 hover:text-white hover:bg-white/[0.06]'
+                      : 'text-black/55 hover:text-black hover:bg-black/[0.05]'
+                  }`}
                 >
                   <span>{item.label}</span>
-                  <svg className="opacity-0 group-hover:opacity-40 -translate-x-1 group-hover:translate-x-0 transition-all duration-200" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <svg className={`opacity-0 group-hover:opacity-40 -translate-x-1 group-hover:translate-x-0 transition-all duration-200`} width="12" height="12" viewBox="0 0 12 12" fill="none">
                     <path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </a>
               ))}
             </div>
-            <div className="mx-3 h-px bg-white/[0.06]" />
+            <div className={`mx-3 h-px ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`} />
             <div className="p-3 flex flex-col gap-2">
               <Link
                 href="/sign-in"
                 onClick={() => setMobileOpen(false)}
-                className="block text-center py-2.5 text-sm font-medium text-white/60 hover:text-white border border-white/[0.08] rounded-xl hover:bg-white/[0.05] transition-all duration-150"
+                className={`block text-center py-2.5 text-sm font-medium rounded-xl transition-all duration-150 ${
+                  isDark
+                    ? 'text-white/60 hover:text-white border border-white/[0.08] hover:bg-white/[0.05]'
+                    : 'text-black/55 hover:text-black border border-black/[0.08] hover:bg-black/[0.04]'
+                }`}
               >
                 Masuk
               </Link>
