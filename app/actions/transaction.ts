@@ -2,13 +2,19 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { transaction, business, user, businessMember } from '@/lib/db/schema'
+import { transaction, business, user, businessMember, budget } from '@/lib/db/schema'
 import { and, eq, desc, gte, count, or } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
 import { getPlan, isLimitReached } from '@/lib/plan-limits'
 import { getBusinessAccess } from './members'
+
+const CATEGORY_LABELS: Record<string, string> = {
+  groceries: 'Bahan Makanan', transportation: 'Transportasi', utilities: 'Utilitas',
+  entertainment: 'Hiburan', dining: 'Makan & Minum', shopping: 'Belanja',
+  healthcare: 'Kesehatan', education: 'Pendidikan', office_supplies: 'Perlengkapan Kantor', other: 'Lainnya',
+}
 
 async function getUserId() {
   const h = await headers()
@@ -80,8 +86,8 @@ export async function createTransaction(
   await db.insert(transaction).values({
     id,
     businessId,
-    userId: ownerId,          // selalu owner untuk konsistensi data & plan limit
-    inputByUserId: userId,    // siapa yang benar-benar input (bisa admin)
+    userId: ownerId,
+    inputByUserId: userId,
     amount: amount.toFixed(2),
     transaction_type: transactionType,
     description: description.trim(),
@@ -94,7 +100,58 @@ export async function createTransaction(
 
   revalidatePath(`/dashboard/${businessId}`)
   revalidatePath(`/dashboard/${businessId}/transactions`)
-  return { id, amount, description }
+
+  // ── Budget alert check (hanya untuk expense) ──────────────────────────────
+  const budgetAlerts: string[] = []
+  if (transactionType === 'expense') {
+    try {
+      const now = new Date()
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+      // Ambil semua budget milik owner untuk bisnis ini
+      const budgets = await db.query.budget.findMany({
+        where: and(eq(budget.businessId, businessId), eq(budget.userId, ownerId)),
+      })
+
+      if (budgets.length > 0) {
+        // Hitung pengeluaran bulan ini per kategori
+        const monthTxns = await db.query.transaction.findMany({
+          where: and(
+            eq(transaction.businessId, businessId),
+            eq(transaction.transaction_type, 'expense'),
+            gte(transaction.createdAt, startMonth)
+          ),
+        })
+
+        const spentByCategory: Record<string, number> = {}
+        monthTxns.forEach((t) => {
+          const cat = t.categoryId || 'other'
+          spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
+        })
+
+        for (const b of budgets) {
+          const spent = spentByCategory[b.category] || 0
+          const budgetAmt = parseFloat(b.amount)
+          const pct = Math.round((spent / budgetAmt) * 100)
+          const label = CATEGORY_LABELS[b.category] || b.category
+
+          if (pct > 100) {
+            budgetAlerts.push(
+              `🔴 Budget ${label} melebihi batas! Terpakai Rp ${spent.toLocaleString('id-ID')} dari Rp ${budgetAmt.toLocaleString('id-ID')} (${pct}%)`
+            )
+          } else if (pct >= 80) {
+            budgetAlerts.push(
+              `🟡 Budget ${label} hampir habis — ${pct}% terpakai (Rp ${spent.toLocaleString('id-ID')} dari Rp ${budgetAmt.toLocaleString('id-ID')})`
+            )
+          }
+        }
+      }
+    } catch {
+      // Budget check gagal — tidak perlu crash, transaksi sudah tersimpan
+    }
+  }
+
+  return { id, amount, description, budgetAlerts }
 }
 
 export async function getTransactions(businessId: string) {

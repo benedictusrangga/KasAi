@@ -18,7 +18,7 @@ export function LandingHowItWorks() {
     {
       number: '02',
       title: 'Hubungkan Telegram',
-      desc: 'Masukkan Telegram ID Anda di Settings. Bot langsung mengenali Anda dan siap menerima transaksi. Satu kali setup, selamanya aktif.',
+      desc: 'Buka Pengaturan → masukkan Telegram ID Anda (dapatkan dari @userinfobot). Bot langsung mengenali Anda dan siap menerima transaksi. Satu kali setup, selamanya aktif.',
       detail: 'Setup < 1 menit',
       gradient: 'linear-gradient(135deg, #0EA5E9, #2AABEE)',
       glow: 'rgba(14,165,233,0.3)',
@@ -26,7 +26,7 @@ export function LandingHowItWorks() {
     {
       number: '03',
       title: 'Catat Transaksi',
-      desc: 'Kirim pesan ke bot, foto struk, atau input manual di dashboard. AI mencatat, mengkategorikan, dan mengkonfirmasi setiap transaksi secara real-time.',
+      desc: 'Kirim pesan ke bot, foto struk, rekam suara, atau input manual di dashboard. AI mencatat, mengkategorikan, dan mengkonfirmasi setiap transaksi secara real-time.',
       detail: 'Bahasa natural Indonesia',
       gradient: 'linear-gradient(135deg, #10B981, #34D399)',
       glow: 'rgba(16,185,129,0.3)',

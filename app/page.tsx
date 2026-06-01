@@ -15,7 +15,7 @@ import { LandingFooter } from '@/components/landing/footer'
 export const metadata = {
   title: 'KasAI — Keuangan Bisnis, Semudah Kirim Pesan',
   description:
-    'Catat transaksi lewat Telegram, foto struk, atau suara. AI kami memahami bisnis Anda dan memberikan laporan keuangan real-time. Gratis untuk mulai.',
+    'Catat transaksi lewat Telegram, foto struk, rekam suara, atau input manual. AI kami memahami bisnis Anda dan memberikan laporan keuangan real-time. Gratis untuk mulai.',
 }
 export const dynamic = 'force-dynamic'
 

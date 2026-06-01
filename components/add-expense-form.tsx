@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createTransaction } from '@/app/actions/transaction'
-import { extractFromImage } from '@/app/actions/ai-chat'
+import { extractFromImage, extractFromMessage } from '@/app/actions/ai-chat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -64,11 +64,107 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
   const [loading, setLoading] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanSuccess, setScanSuccess] = useState(false)
+  const [budgetAlerts, setBudgetAlerts] = useState<string[]>([])
+
+  // Voice input state
+  const [isRecording, setIsRecording] = useState(false)
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null)
+  const [voiceSuccess, setVoiceSuccess] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
+  const startVoiceInput = useCallback(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setError('Browser Anda tidak mendukung input suara. Coba Chrome atau Edge.')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'id-ID'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognitionRef.current = recognition
+
+    recognition.onstart = () => {
+      setIsRecording(true)
+      setError(null)
+      setVoiceTranscript(null)
+      setVoiceSuccess(false)
+    }
+
+    recognition.onresult = async (event: any) => {
+      const transcript = event.results[0][0].transcript
+      setVoiceTranscript(transcript)
+      setIsRecording(false)
+      setIsProcessingVoice(true)
+
+      try {
+        const results = await extractFromMessage(transcript)
+        if (results.length > 0) {
+          const first = results[0]
+          setAmount(first.amount.toString())
+          setDescription(first.description)
+          // Tentukan tipe transaksi dari hasil AI
+          // extractFromMessage mengembalikan expense/income via extractExpensesFromText
+          // Kita cek dari deskripsi apakah ada kata kunci income
+          const incomeKeywords = ['terima', 'masuk', 'penjualan', 'bayaran', 'pemasukan', 'pendapatan', 'income']
+          const isIncome = incomeKeywords.some(k => transcript.toLowerCase().includes(k))
+          setTransactionType(isIncome ? 'income' : 'expense')
+
+          const matchedDb = categories.find(
+            (c) => c.type === first.category || c.name.toLowerCase() === first.category?.toLowerCase()
+          )
+          if (matchedDb) {
+            setCategoryValue(`db:${matchedDb.id}`)
+          } else {
+            const matchedDefault = DEFAULT_EXPENSE_CATEGORIES.find((c) => c.value === first.category)
+            setCategoryValue(matchedDefault ? `default:${matchedDefault.value}` : '__none__')
+          }
+          setVoiceSuccess(true)
+        } else {
+          // Tidak ada transaksi terdeteksi — isi deskripsi saja biar user bisa edit manual
+          setDescription(transcript)
+          setError('AI tidak mendeteksi nominal. Silakan isi jumlah secara manual.')
+        }
+      } catch {
+        setError('Gagal memproses suara. Silakan coba lagi.')
+      } finally {
+        setIsProcessingVoice(false)
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      setIsRecording(false)
+      setIsProcessingVoice(false)
+      if (event.error === 'not-allowed') {
+        setError('Izin mikrofon ditolak. Aktifkan akses mikrofon di browser Anda.')
+      } else if (event.error === 'no-speech') {
+        setError('Tidak ada suara terdeteksi. Coba lagi.')
+      } else {
+        setError('Gagal merekam suara. Pastikan mikrofon aktif.')
+      }
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognition.start()
+  }, [categories])
+
+  const stopVoiceInput = useCallback(() => {
+    recognitionRef.current?.stop()
+    setIsRecording(false)
+  }, [])
 
   // Reset kategori saat ganti tipe transaksi
   const handleTypeChange = (type: 'expense' | 'income') => {
     setTransactionType(type)
     setCategoryValue('__none__')
+    setVoiceSuccess(false)
+    setVoiceTranscript(null)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,8 +232,6 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
       if (categoryValue.startsWith('db:')) {
         categoryId = categoryValue.replace('db:', '')
       }
-      // Kalau 'default:xxx' atau '__none__', simpan sebagai undefined (null di DB)
-      // Nama kategori default disimpan di notes jika perlu, tapi tidak sebagai FK
 
       // Kalau kategori default dipilih, tambahkan ke notes sebagai konteks
       let finalNotes = notes.trim()
@@ -150,7 +244,7 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
         }
       }
 
-      await createTransaction(
+      const result = await createTransaction(
         businessId,
         parsedAmount,
         description.trim(),
@@ -159,10 +253,22 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
         transactionType,
         [],
         finalNotes || undefined,
-        undefined // receipt URL — tidak simpan base64 ke DB
+        undefined
       )
-      router.push(`/dashboard/${businessId}`)
-      router.refresh()
+
+      // Tampilkan budget alert jika ada, sebelum redirect
+      if (result.budgetAlerts && result.budgetAlerts.length > 0) {
+        setBudgetAlerts(result.budgetAlerts)
+        setLoading(false)
+        // Redirect setelah 3 detik agar user sempat baca alert
+        setTimeout(() => {
+          router.push(`/dashboard/${businessId}`)
+          router.refresh()
+        }, 3500)
+      } else {
+        router.push(`/dashboard/${businessId}`)
+        router.refresh()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal menyimpan transaksi. Silakan coba lagi.')
       setLoading(false)
@@ -314,6 +420,65 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
           />
         </div>
 
+        {/* Voice input */}
+        <div className={`rounded-xl border border-dashed p-5 transition-colors ${
+          isRecording
+            ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20'
+            : voiceSuccess
+            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/20'
+            : 'border-border bg-muted/30'
+        }`}>
+          <p className="text-sm font-medium text-foreground mb-3">🎙️ Input Suara (Opsional)</p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="flex-1">
+              {isRecording ? (
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                  </span>
+                  <p className="text-sm text-rose-600 font-medium">Mendengarkan... Ucapkan transaksi Anda</p>
+                </div>
+              ) : isProcessingVoice ? (
+                <p className="text-sm text-amber-600 font-medium">⏳ AI sedang memproses suara...</p>
+              ) : voiceTranscript ? (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Hasil transkripsi:</p>
+                  <p className="text-sm text-foreground italic">"{voiceTranscript}"</p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Ucapkan transaksi seperti <span className="font-medium">"beli bahan baku kopi 450 ribu"</span> atau <span className="font-medium">"terima pembayaran 1.2 juta"</span>
+                </p>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant={isRecording ? 'destructive' : 'outline'}
+              onClick={isRecording ? stopVoiceInput : startVoiceInput}
+              disabled={isProcessingVoice}
+              className={`shrink-0 gap-2 ${voiceSuccess && !isRecording ? 'border-emerald-400 text-emerald-700' : ''}`}
+            >
+              {isProcessingVoice ? (
+                <>
+                  <span className="animate-spin">⏳</span> Memproses...
+                </>
+              ) : isRecording ? (
+                <>
+                  <span className="h-2 w-2 rounded-sm bg-white inline-block" /> Stop
+                </>
+              ) : voiceSuccess ? (
+                <>✓ Berhasil</>
+              ) : (
+                <>🎙️ Rekam Suara</>
+              )}
+            </Button>
+          </div>
+          {voiceSuccess && (
+            <p className="text-xs text-emerald-600 mt-2 font-medium">✓ Data berhasil diekstrak dari suara — periksa dan sesuaikan jika perlu</p>
+          )}
+        </div>
+
         {/* Receipt upload */}
         <div className="rounded-xl border border-dashed border-border bg-muted/30 p-5">
           <p className="text-sm font-medium text-foreground mb-3">📷 Scan Struk (Opsional)</p>
@@ -344,6 +509,25 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
             <p className="text-xs text-emerald-600 mt-2">✓ Data berhasil diekstrak dari struk</p>
           )}
         </div>
+
+        {budgetAlerts.length > 0 && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-4">
+            <div className="flex items-start gap-3">
+              <span className="text-xl shrink-0">⚠️</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                  Transaksi tersimpan — Peringatan Budget:
+                </p>
+                <ul className="space-y-1">
+                  {budgetAlerts.map((alert, i) => (
+                    <li key={i} className="text-sm text-amber-700 dark:text-amber-400">• {alert}</li>
+                  ))}
+                </ul>
+                <p className="text-xs text-amber-600 dark:text-amber-500 mt-2">Mengarahkan ke dashboard...</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3">

@@ -142,7 +142,7 @@ export function LandingPricing() {
 
         <p className="text-center text-xs mt-8 tracking-wide"
           style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.25)' }}>
-          Semua harga dalam Rupiah · Tidak ada kontrak · Batalkan kapan saja · Upgrade/downgrade instan
+          Semua harga dalam Rupiah · Tidak ada kontrak · Batalkan kapan saja · Sistem pembayaran otomatis segera hadir
         </p>
       </div>
     </section>

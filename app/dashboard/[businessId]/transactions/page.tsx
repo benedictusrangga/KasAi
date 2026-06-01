@@ -4,6 +4,8 @@ import { use, useState, useEffect } from 'react'
 import { getTransactions } from '@/app/actions/transaction'
 import { getBusinessCategories } from '@/app/actions/business'
 import { getBusinessMembers } from '@/app/actions/members'
+import { getCurrentUserInfo } from '@/app/actions/comments'
+import TransactionComments from '@/components/transaction-comments'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +31,8 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
   const [transactions, setTransactions] = useState<any[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [memberMap, setMemberMap] = useState<Record<string, string>>({})
+  const [currentUserId, setCurrentUserId] = useState<string>('')
+  const [isOwner, setIsOwner] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
@@ -39,8 +43,9 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
       getTransactions(businessId),
       getBusinessCategories(businessId).catch(() => []),
       getBusinessMembers(businessId).catch(() => []),
+      getCurrentUserInfo(businessId).catch(() => null),
     ])
-      .then(([txns, cats, members]) => {
+      .then(([txns, cats, members, userInfo]) => {
         setTransactions(txns)
         setCategories(cats)
         // Build map: userId → display name
@@ -51,6 +56,10 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
           }
         })
         setMemberMap(map)
+        if (userInfo) {
+          setCurrentUserId(userInfo.userId)
+          setIsOwner(userInfo.isOwner)
+        }
       })
       .catch(console.error)
       .finally(() => setIsLoading(false))
@@ -233,6 +242,16 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">
                           {txn.notes}
                         </p>
+                      )}
+                      {/* Komentar per transaksi */}
+                      {currentUserId && (
+                        <TransactionComments
+                          businessId={businessId}
+                          transactionId={txn.id}
+                          transactionDesc={txn.description}
+                          currentUserId={currentUserId}
+                          isOwner={isOwner}
+                        />
                       )}
                     </div>
                   </div>

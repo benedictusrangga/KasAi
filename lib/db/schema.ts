@@ -237,6 +237,17 @@ export const budget = pgTable('budget', {
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
+// ── Komentar transaksi ────────────────────────────────────────────────────────
+export const transactionComment = pgTable('transaction_comment', {
+  id: text('id').primaryKey(),
+  businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
+  transactionId: text('transactionId').references(() => transaction.id, { onDelete: 'cascade' }),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
 // ── Relations (untuk Drizzle query API dengan `with`) ─────────────────────────
 
 export const businessMemberRelations = relations(businessMember, ({ one }) => ({
@@ -257,4 +268,20 @@ export const businessMemberRelations = relations(businessMember, ({ one }) => ({
 
 export const businessRelations = relations(business, ({ many }) => ({
   members: many(businessMember),
+  comments: many(transactionComment),
+}))
+
+export const transactionCommentRelations = relations(transactionComment, ({ one }) => ({
+  user: one(user, {
+    fields: [transactionComment.userId],
+    references: [user.id],
+  }),
+  business: one(business, {
+    fields: [transactionComment.businessId],
+    references: [business.id],
+  }),
+  transaction: one(transaction, {
+    fields: [transactionComment.transactionId],
+    references: [transaction.id],
+  }),
 }))

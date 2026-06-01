@@ -37,6 +37,20 @@ export function LandingFeatures() {
       desc: 'Foto struk belanja atau bukti transfer — Gemini AI membaca dan mengekstrak semua detail transaksi secara akurat dalam hitungan detik.',
     },
     {
+      id: 'voice',
+      span: '',
+      accent: { bg: 'rgba(236,72,153,0.07)', border: 'rgba(236,72,153,0.18)', text: '#f9a8d4', glow: 'rgba(236,72,153,0.1)' },
+      accentLight: { bg: 'rgba(236,72,153,0.06)', border: 'rgba(236,72,153,0.15)', text: '#db2777', glow: 'rgba(236,72,153,0.07)' },
+      icon: (color: string) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      title: 'Input Suara',
+      desc: 'Ucapkan transaksi seperti "beli bahan baku kopi 450 ribu" — AI langsung mengenali nominal, deskripsi, dan kategori. Cukup bicara, tidak perlu mengetik.',
+    },
+    {
       id: 'advisor',
       span: '',
       accent: { bg: 'rgba(16,185,129,0.07)', border: 'rgba(16,185,129,0.18)', text: '#6ee7b7', glow: 'rgba(16,185,129,0.1)' },
@@ -108,7 +122,7 @@ export function LandingFeatures() {
         </svg>
       ),
       title: 'Goals & Budget',
-      desc: 'Tetapkan target keuangan dan batas anggaran per kategori. Dapat notifikasi otomatis via Telegram saat budget hampir habis.',
+      desc: 'Tetapkan target keuangan dan batas anggaran per kategori. Dapat notifikasi otomatis via Telegram dan peringatan langsung di dashboard saat budget hampir habis.',
     },
     {
       id: 'pdf',

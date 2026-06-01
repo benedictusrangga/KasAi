@@ -507,7 +507,7 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
             <div>
               <h3 className="text-lg font-bold text-foreground mb-2">Upgrade Plan</h3>
               <p className="text-sm text-muted-foreground mb-6">
-                Untuk upgrade, hubungi admin atau tim KasAI. Perubahan plan akan aktif segera setelah konfirmasi pembayaran.
+                Pilih plan di bawah dan klik tombol upgrade untuk mengirim permintaan. Sistem pembayaran otomatis segera hadir — saat ini proses manual via konfirmasi tim KasAI.
               </p>
 
               {/* Personal plans */}
@@ -619,7 +619,7 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
 
               <div className="mt-6 rounded-xl bg-muted/50 border border-border p-4 text-sm text-muted-foreground">
                 <p className="font-medium text-foreground mb-1">💡 Cara Upgrade</p>
-                <p>Klik tombol upgrade di atas untuk mengirim email ke tim KasAI, atau hubungi kami langsung. Plan akan diaktifkan dalam 1×24 jam setelah konfirmasi pembayaran.</p>
+                <p>Klik tombol upgrade di atas untuk mengirim email ke tim KasAI. Plan akan diaktifkan setelah konfirmasi pembayaran. Sistem pembayaran otomatis (Stripe/Xendit) segera hadir.</p>
               </div>
             </div>
           </div>
