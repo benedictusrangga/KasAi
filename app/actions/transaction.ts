@@ -2,7 +2,7 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { transaction } from '@/lib/db/schema'
+import { transaction, business } from '@/lib/db/schema'
 import { and, eq, desc } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -32,22 +32,34 @@ export async function createTransaction(
 ) {
   const userId = await getUserId()
 
+  // Verifikasi bisnis milik user ini
+  const biz = await db.query.business.findFirst({
+    where: and(eq(business.id, businessId), eq(business.userId, userId)),
+  })
+  if (!biz) throw new Error('Business not found or access denied')
+
+  // Validasi amount
+  if (isNaN(amount) || amount <= 0) throw new Error('Jumlah harus lebih dari 0')
+  if (!description?.trim()) throw new Error('Deskripsi tidak boleh kosong')
+
   const id = nanoid()
   await db.insert(transaction).values({
     id,
     businessId,
     userId,
-    amount: amount.toString(),
+    amount: amount.toFixed(2),
     transaction_type: transactionType,
-    description,
-    categoryId,
+    description: description.trim(),
+    // categoryId hanya disimpan jika berupa UUID valid (bukan enum string)
+    categoryId: categoryId && categoryId.length > 10 ? categoryId : undefined,
     source,
     receipt_url: receiptUrl,
-    tags,
-    notes,
+    tags: tags && tags.length > 0 ? tags : undefined,
+    notes: notes?.trim() || undefined,
   })
 
-  revalidatePath('/')
+  revalidatePath(`/dashboard/${businessId}`)
+  revalidatePath(`/dashboard/${businessId}/transactions`)
   return { id, amount, description }
 }
 

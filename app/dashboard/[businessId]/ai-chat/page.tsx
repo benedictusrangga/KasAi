@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getBusiness } from '@/app/actions/business'
 import { createAiChat, getAiChat } from '@/app/actions/ai-chat'
 import { AiChat } from '@/components/ai-chat'
+import { PdfExport } from '@/components/pdf-export'
 
 export const metadata = { title: 'AI Assistant — KasAI' }
 export const dynamic = 'force-dynamic'
@@ -52,9 +53,12 @@ export default async function AiChatPage({
             <h1 className="text-xl font-bold text-foreground">AI Financial Assistant</h1>
             <p className="text-sm text-muted-foreground">{business.name} · Powered by Gemini AI</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs text-muted-foreground">Online</span>
+          <div className="flex items-center gap-3">
+            <PdfExport businessId={businessId} businessName={business.name} />
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs text-muted-foreground">Online</span>
+            </div>
           </div>
         </div>
 
@@ -64,6 +68,7 @@ export default async function AiChatPage({
             chatId={chatId}
             businessId={businessId}
             businessType={business.type}
+            businessName={business.name}
             initialMessages={messages}
           />
         </div>

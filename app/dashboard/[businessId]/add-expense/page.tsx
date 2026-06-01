@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getBusiness } from '@/app/actions/business'
+import { getBusiness, getBusinessCategories } from '@/app/actions/business'
 import { AddExpenseForm } from '@/components/add-expense-form'
 
 export const metadata = { title: 'Tambah Transaksi — KasAI' }
@@ -18,10 +18,14 @@ export default async function AddExpensePage({ params }: { params: Promise<{ bus
   if (!session?.user) redirect('/sign-in')
 
   try {
-    await getBusiness(businessId)
+    const [, categories] = await Promise.all([
+      getBusiness(businessId),
+      getBusinessCategories(businessId).catch(() => []),
+    ])
+
     return (
       <div className="p-8 flex justify-center">
-        <AddExpenseForm businessId={businessId} />
+        <AddExpenseForm businessId={businessId} categories={categories} />
       </div>
     )
   } catch (err) {

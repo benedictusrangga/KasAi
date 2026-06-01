@@ -3,6 +3,7 @@ import { business, transaction, user, goal, budget } from '@/lib/db/schema'
 import { and, eq, gte, lte } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { extractTransactionsFromText, extractTransactionsFromImage, chatWithAI } from '@/lib/gemini'
+import { generateReportPdf, type ReportData } from '@/lib/pdf-server'
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 
@@ -70,6 +71,148 @@ async function findUserByPhoneNumber(phoneNumber: string) {
   return db.query.user.findFirst({
     where: eq(user.phoneNumber, phoneNumber),
   })
+}
+
+// Kirim file PDF ke Telegram user via sendDocument
+async function sendTelegramDocument(
+  chatId: number,
+  pdfBuffer: Buffer,
+  filename: string,
+  caption?: string
+) {
+  if (!TELEGRAM_BOT_TOKEN) return
+
+  try {
+    // Buat FormData dengan file buffer
+    const formData = new FormData()
+    formData.append('chat_id', String(chatId))
+    formData.append(
+      'document',
+      new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }),
+      filename
+    )
+    if (caption) formData.append('caption', caption)
+    formData.append('parse_mode', 'HTML')
+
+    const res = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument`,
+      { method: 'POST', body: formData }
+    )
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      console.error('[Telegram] sendDocument failed:', err)
+    }
+  } catch (err) {
+    console.error('[Telegram] sendDocument error:', err)
+  }
+}
+
+// Ambil data laporan dari DB dan format untuk PDF
+async function buildReportData(
+  userId: string,
+  businessId: string,
+  businessName: string,
+  businessType: string,
+  period: 'month' | 'week' | 'all'
+): Promise<ReportData> {
+  const now = new Date()
+  let startDate: Date | undefined
+  let endDate: Date | undefined
+  let periodLabel = 'Semua Waktu'
+
+  if (period === 'month') {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+    periodLabel = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+  } else if (period === 'week') {
+    const day = now.getDay()
+    startDate = new Date(now)
+    startDate.setDate(now.getDate() - day)
+    startDate.setHours(0, 0, 0, 0)
+    endDate = new Date(startDate)
+    endDate.setDate(startDate.getDate() + 6)
+    endDate.setHours(23, 59, 59)
+    periodLabel = 'Minggu Ini'
+  }
+
+  const whereConditions = [
+    eq(transaction.businessId, businessId),
+    eq(transaction.userId, userId),
+    ...(startDate ? [gte(transaction.createdAt, startDate)] : []),
+    ...(endDate ? [lte(transaction.createdAt, endDate)] : []),
+  ]
+
+  const [txns, goals, budgets] = await Promise.all([
+    db.query.transaction.findMany({
+      where: and(...whereConditions as any),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    }),
+    db.query.goal.findMany({ where: and(eq(goal.businessId, businessId), eq(goal.userId, userId)) }),
+    db.query.budget.findMany({ where: and(eq(budget.businessId, businessId), eq(budget.userId, userId)) }),
+  ])
+
+  const totalIncome = txns.filter(t => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
+  const totalExpense = txns.filter(t => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
+
+  // Category breakdown
+  const byCategoryMap: Record<string, number> = {}
+  txns.filter(t => t.transaction_type === 'expense').forEach(t => {
+    const cat = t.categoryId || 'other'
+    byCategoryMap[cat] = (byCategoryMap[cat] || 0) + parseFloat(t.amount)
+  })
+  const byCategory = Object.entries(byCategoryMap)
+    .map(([category, amount]) => ({
+      category: CATEGORY_LABELS[category] || category,
+      amount,
+      percentage: totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount)
+
+  // Budget status
+  const budgetStatus = budgets.map(b => {
+    const spent = byCategoryMap[b.category] || 0
+    const budgetAmt = parseFloat(b.amount)
+    const pct = Math.round((spent / budgetAmt) * 100)
+    return {
+      category: b.category,
+      budget: budgetAmt,
+      spent,
+      percentage: pct,
+      status: pct > 100 ? 'MELEBIHI' : pct > 80 ? 'HAMPIR HABIS' : 'AMAN',
+    }
+  })
+
+  return {
+    businessName,
+    businessType,
+    period: periodLabel,
+    generatedAt: now,
+    summary: {
+      totalIncome,
+      totalExpense,
+      netProfit: totalIncome - totalExpense,
+      txCount: txns.length,
+    },
+    transactions: txns.map(t => ({
+      date: new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
+      description: t.description,
+      type: t.transaction_type,
+      amount: parseFloat(t.amount),
+      categoryId: t.categoryId,
+      source: t.source,
+    })),
+    byCategory,
+    budgetStatus,
+    goals: goals.map(g => ({
+      title: g.title,
+      target: parseFloat(g.targetAmount),
+      current: parseFloat(g.currentAmount),
+      percentage: Math.min(Math.round((parseFloat(g.currentAmount) / parseFloat(g.targetAmount)) * 100), 100),
+      completed: g.completed,
+      deadline: g.deadline ? new Date(g.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
+    })),
+  }
 }
 
 async function getTelegramFileBase64(fileId: string): Promise<{ base64: string; mimeType: string } | null> {
@@ -147,6 +290,9 @@ export async function handleTelegramUpdate(update: any) {
       `/status - Cek status akun\n` +
       `/laporan - Laporan keuangan bulan ini\n` +
       `/laporan_minggu - Laporan minggu ini\n` +
+      `/pdf - 📄 Kirim PDF laporan bulan ini\n` +
+      `/pdf_minggu - 📄 Kirim PDF laporan minggu ini\n` +
+      `/pdf_semua - 📄 Kirim PDF semua transaksi\n` +
       `/budget - Cek status budget bulan ini\n` +
       `/target - Cek progress semua target`,
       'HTML'
@@ -253,6 +399,54 @@ export async function handleTelegramUpdate(update: any) {
 
     msg += `\n<i>Lihat laporan lengkap di aplikasi KasAI</i>`
     await sendTelegramMessage(chatId, msg, 'HTML')
+    return
+  }
+
+  // ── Handle /pdf & /pdf_minggu ──────────────────────────────────────────────
+  if (messageText === '/pdf' || messageText === '/pdf_minggu' || messageText === '/pdf_semua') {
+    const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
+    if (!tempUser) {
+      await sendTelegramMessage(chatId, '❌ Akun belum terhubung. Ketik /start untuk info.')
+      return
+    }
+    const tempBusinesses = await db.query.business.findMany({ where: eq(business.userId, tempUser.id) })
+    if (tempBusinesses.length === 0) {
+      await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis. Buat bisnis di aplikasi KasAI.')
+      return
+    }
+    const biz = tempBusinesses[0]
+
+    const period: 'month' | 'week' | 'all' =
+      messageText === '/pdf_minggu' ? 'week' :
+      messageText === '/pdf_semua' ? 'all' : 'month'
+
+    const periodLabel = period === 'week' ? 'Minggu Ini' : period === 'all' ? 'Semua Waktu' :
+      new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+
+    // Kirim notif dulu karena generate PDF butuh beberapa detik
+    await sendTelegramMessage(chatId, `⏳ Membuat laporan PDF <b>${periodLabel}</b>...`, 'HTML')
+
+    try {
+      const reportData = await buildReportData(tempUser.id, biz.id, biz.name, biz.type, period)
+      const pdfBuffer = await generateReportPdf(reportData)
+
+      const now = new Date()
+      const dateStr = now.toISOString().slice(0, 10)
+      const filename = `KasAI_${biz.name.replace(/\s+/g, '_')}_${period}_${dateStr}.pdf`
+
+      const caption =
+        `📄 <b>Laporan Keuangan ${periodLabel}</b>\n` +
+        `🏪 ${escapeHtml(biz.name)}\n` +
+        `📅 ${now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}\n\n` +
+        `💰 Pemasukan: <b>Rp ${reportData.summary.totalIncome.toLocaleString('id-ID')}</b>\n` +
+        `💸 Pengeluaran: <b>Rp ${reportData.summary.totalExpense.toLocaleString('id-ID')}</b>\n` +
+        `${reportData.summary.netProfit >= 0 ? '✅' : '❌'} ${reportData.summary.netProfit >= 0 ? 'Laba' : 'Rugi'}: <b>Rp ${Math.abs(reportData.summary.netProfit).toLocaleString('id-ID')}</b>`
+
+      await sendTelegramDocument(chatId, pdfBuffer, filename, caption)
+    } catch (err) {
+      console.error('[Telegram] PDF generation error:', err)
+      await sendTelegramMessage(chatId, '❌ Gagal membuat PDF. Silakan coba lagi atau gunakan /laporan untuk ringkasan teks.')
+    }
     return
   }
 

@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect } from 'react'
 import { getTransactions } from '@/app/actions/transaction'
+import { getBusinessCategories } from '@/app/actions/business'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,32 +16,39 @@ const SOURCE_ICONS: Record<string, string> = {
   api: '🔌',
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  groceries: 'Bahan Makanan',
-  transportation: 'Transportasi',
-  utilities: 'Utilitas',
-  entertainment: 'Hiburan',
-  dining: 'Makan & Minum',
-  shopping: 'Belanja',
-  healthcare: 'Kesehatan',
-  education: 'Pendidikan',
-  office_supplies: 'Perlengkapan Kantor',
-  other: 'Lainnya',
+type Category = {
+  id: string
+  name: string
+  type: string
+  icon?: string | null
 }
 
 export default function TransactionsPage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = use(params)
   const [transactions, setTransactions] = useState<any[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
 
   useEffect(() => {
-    getTransactions(businessId)
-      .then(setTransactions)
+    Promise.all([
+      getTransactions(businessId),
+      getBusinessCategories(businessId).catch(() => []),
+    ])
+      .then(([txns, cats]) => {
+        setTransactions(txns)
+        setCategories(cats)
+      })
       .catch(console.error)
       .finally(() => setIsLoading(false))
   }, [businessId])
+
+  // Map categoryId (UUID) → nama kategori
+  const categoryMap = categories.reduce<Record<string, string>>((acc, cat) => {
+    acc[cat.id] = cat.icon ? `${cat.icon} ${cat.name}` : cat.name
+    return acc
+  }, {})
 
   const filtered = transactions.filter((t) => {
     const matchSearch =
@@ -50,8 +58,12 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
     return matchSearch && matchType
   })
 
-  const totalIncome = filtered.filter((t) => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
-  const totalExpense = filtered.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
+  const totalIncome = filtered
+    .filter((t) => t.transaction_type === 'income')
+    .reduce((s, t) => s + parseFloat(t.amount), 0)
+  const totalExpense = filtered
+    .filter((t) => t.transaction_type === 'expense')
+    .reduce((s, t) => s + parseFloat(t.amount), 0)
 
   return (
     <div className="p-8">
@@ -73,11 +85,15 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="rounded-xl border border-border bg-card px-4 py-3">
             <p className="text-xs text-muted-foreground">Pemasukan (filter)</p>
-            <p className="text-lg font-bold text-emerald-600">Rp {totalIncome.toLocaleString('id-ID')}</p>
+            <p className="text-lg font-bold text-emerald-600">
+              Rp {totalIncome.toLocaleString('id-ID')}
+            </p>
           </div>
           <div className="rounded-xl border border-border bg-card px-4 py-3">
             <p className="text-xs text-muted-foreground">Pengeluaran (filter)</p>
-            <p className="text-lg font-bold text-rose-500">Rp {totalExpense.toLocaleString('id-ID')}</p>
+            <p className="text-lg font-bold text-rose-500">
+              Rp {totalExpense.toLocaleString('id-ID')}
+            </p>
           </div>
           <div className="rounded-xl border border-border bg-card px-4 py-3">
             <p className="text-xs text-muted-foreground">Ditampilkan</p>
@@ -122,7 +138,9 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
           <div className="text-4xl mb-3">📭</div>
           <p className="text-foreground font-medium mb-1">Tidak ada transaksi</p>
           <p className="text-muted-foreground text-sm mb-4">
-            {searchTerm || filterType !== 'all' ? 'Coba ubah filter pencarian.' : 'Mulai catat transaksi pertama Anda.'}
+            {searchTerm || filterType !== 'all'
+              ? 'Coba ubah filter pencarian.'
+              : 'Mulai catat transaksi pertama Anda.'}
           </p>
           {!searchTerm && filterType === 'all' && (
             <Link href={`/dashboard/${businessId}/add-expense`}>
@@ -134,36 +152,53 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
             {filtered.map((txn) => (
-              <div key={txn.id} className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
+              <div
+                key={txn.id}
+                className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+              >
                 <div className="flex items-center gap-4 min-w-0">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm ${
-                    txn.transaction_type === 'income'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-rose-100 text-rose-700'
-                  }`}>
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm ${
+                      txn.transaction_type === 'income'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-rose-100 text-rose-700'
+                    }`}
+                  >
                     {txn.transaction_type === 'income' ? '↑' : '↓'}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{txn.description}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {txn.description}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs text-muted-foreground">
-                        {SOURCE_ICONS[txn.source]} {new Date(txn.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {SOURCE_ICONS[txn.source]}{' '}
+                        {new Date(txn.createdAt).toLocaleDateString('id-ID', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
                       </span>
-                      {txn.categoryId && (
+                      {txn.categoryId && categoryMap[txn.categoryId] && (
                         <Badge variant="secondary" className="text-xs py-0 h-4">
-                          {CATEGORY_LABELS[txn.categoryId] || txn.categoryId}
+                          {categoryMap[txn.categoryId]}
                         </Badge>
                       )}
                     </div>
                     {txn.notes && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{txn.notes}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {txn.notes}
+                      </p>
                     )}
                   </div>
                 </div>
-                <p className={`text-sm font-semibold shrink-0 ml-4 ${
-                  txn.transaction_type === 'income' ? 'text-emerald-600' : 'text-rose-500'
-                }`}>
-                  {txn.transaction_type === 'income' ? '+' : '-'}Rp {parseFloat(txn.amount).toLocaleString('id-ID')}
+                <p
+                  className={`text-sm font-semibold shrink-0 ml-4 ${
+                    txn.transaction_type === 'income' ? 'text-emerald-600' : 'text-rose-500'
+                  }`}
+                >
+                  {txn.transaction_type === 'income' ? '+' : '-'}Rp{' '}
+                  {parseFloat(txn.amount).toLocaleString('id-ID')}
                 </p>
               </div>
             ))}
