@@ -7,6 +7,7 @@ import { LandingHero } from '@/components/landing/hero'
 import { LandingSocialProof } from '@/components/landing/social-proof'
 import { LandingFeatures } from '@/components/landing/features'
 import { LandingTelegram } from '@/components/landing/telegram'
+import { LandingAiPersona } from '@/components/landing/ai-persona'
 import { LandingHowItWorks } from '@/components/landing/how-it-works'
 import { LandingPricing } from '@/components/landing/pricing'
 import { LandingCta } from '@/components/landing/cta'
@@ -36,6 +37,7 @@ export default async function LandingPage() {
         <LandingSocialProof />
         <LandingFeatures />
         <LandingTelegram />
+        <LandingAiPersona />
         <LandingHowItWorks />
         <LandingPricing />
         <LandingCta />

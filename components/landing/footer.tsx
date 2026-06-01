@@ -56,6 +56,7 @@ export function LandingFooter() {
               {[
                 { label: 'Fitur',        href: '#fitur' },
                 { label: 'Cara Kerja',   href: '#cara-kerja' },
+                { label: 'AI Persona',   href: '#ai-persona' },
                 { label: 'Harga',        href: '#harga' },
                 { label: 'Telegram Bot', href: '#telegram' },
               ].map(item => (

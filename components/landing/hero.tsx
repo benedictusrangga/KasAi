@@ -89,7 +89,7 @@ export function LandingHero() {
           style={{ color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.5)' }}>
           Cukup chat ke bot Telegram — AI langsung mencatat transaksi,
           mengkategorikan pengeluaran, dan menyajikan laporan keuangan bisnis
-          Anda secara real-time. Kasir Anda input, Anda pantau. Tidak perlu spreadsheet, tidak perlu akuntan.
+          Anda secara real-time. Pilih kepribadian AI yang cocok, undang tim, dan pantau semua dari satu dashboard.
         </p>
 
         {/* CTA buttons */}
@@ -325,6 +325,25 @@ export function LandingHero() {
             <div>
               <p className="text-xs font-semibold" style={{ color: isDark ? '#ffffff' : '#0a0a0a' }}>Owner + 2 Admin</p>
               <p className="text-[11px]" style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>Semua data terpantau 👁</p>
+            </div>
+          </div>
+
+          {/* Floating AI Persona badge */}
+          <div className="hidden lg:flex absolute -right-8 bottom-10 items-center gap-2.5 rounded-2xl px-4 py-3 pointer-events-none backdrop-blur-xl"
+            style={{
+              border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
+              background: isDark ? 'rgba(15,15,15,0.95)' : 'rgba(255,255,255,0.95)',
+              boxShadow: isDark
+                ? '0 16px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)'
+                : '0 16px 48px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8)',
+            }}>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg"
+              style={{ background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)' }}>
+              🔥
+            </div>
+            <div>
+              <p className="text-xs font-semibold" style={{ color: isDark ? '#ffffff' : '#0a0a0a' }}>AI Coach aktif</p>
+              <p className="text-[11px]" style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>4 persona tersedia</p>
             </div>
           </div>
         </div>

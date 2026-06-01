@@ -8,8 +8,9 @@ import { ThemeToggle } from './theme-toggle'
 
 const NAV_LINKS = [
   { label: 'Fitur',      href: '#fitur' },
-  { label: 'Cara Kerja', href: '#cara-kerja' },
   { label: 'Telegram',   href: '#telegram' },
+  { label: 'AI Persona', href: '#ai-persona' },
+  { label: 'Cara Kerja', href: '#cara-kerja' },
   { label: 'Harga',      href: '#harga' },
 ]
 
@@ -64,18 +65,47 @@ export function LandingNav() {
 
   useEffect(() => {
     const ids = NAV_LINKS.map((l) => l.href.slice(1))
-    const observers: IntersectionObserver[] = []
-    ids.forEach((id) => {
-      const el = document.getElementById(id)
-      if (!el) return
-      const obs = new IntersectionObserver(
-        ([entry]) => { if (entry.isIntersecting) setActiveHash('#' + id) },
-        { rootMargin: '-40% 0px -55% 0px' }
-      )
-      obs.observe(el)
-      observers.push(obs)
-    })
-    return () => observers.forEach((o) => o.disconnect())
+
+    const getActiveId = () => {
+      const scrollY = window.scrollY
+      const viewportH = window.innerHeight
+      // Cari section yang paling dekat ke 40% dari atas viewport
+      const target = scrollY + viewportH * 0.4
+
+      let closest = ''
+      let closestDist = Infinity
+
+      ids.forEach((id) => {
+        const el = document.getElementById(id)
+        if (!el) return
+        const rect = el.getBoundingClientRect()
+        const elTop = rect.top + scrollY
+        const dist = Math.abs(elTop - target)
+        if (dist < closestDist) {
+          closestDist = dist
+          closest = id
+        }
+      })
+
+      // Hanya aktifkan jika section sudah masuk viewport (tidak terlalu jauh di bawah)
+      if (closest) {
+        const el = document.getElementById(closest)
+        if (el) {
+          const rect = el.getBoundingClientRect()
+          // Section harus sudah mulai masuk dari atas, atau belum lewat dari bawah
+          if (rect.top < viewportH * 0.75 && rect.bottom > viewportH * 0.1) {
+            setActiveHash('#' + closest)
+            return
+          }
+        }
+      }
+    }
+
+    const onScroll = () => { getActiveId() }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    // Jalankan sekali saat mount
+    getActiveId()
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
   useEffect(() => {

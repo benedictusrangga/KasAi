@@ -110,6 +110,21 @@ export function LandingFeatures() {
       tags: ['Audit trail per anggota', 'Filter transaksi by admin', 'Telegram bot untuk admin', 'Max 3 admin (Pro) · Unlimited (Enterprise)'],
     },
     {
+      id: 'comments',
+      span: '',
+      accent: { bg: 'rgba(99,102,241,0.07)', border: 'rgba(99,102,241,0.18)', text: '#a5b4fc', glow: 'rgba(99,102,241,0.1)' },
+      accentLight: { bg: 'rgba(99,102,241,0.06)', border: 'rgba(99,102,241,0.15)', text: '#4f46e5', glow: 'rgba(99,102,241,0.07)' },
+      icon: (color: string) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M8 10h8M8 14h5" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      ),
+      title: 'Komentar Transaksi',
+      desc: 'Owner dan admin bisa saling berkomentar langsung di setiap transaksi. Tanya "kenapa pengeluaran ini?" atau beri catatan penting — notifikasi otomatis dikirim via Telegram ke semua anggota tim.',
+      tags: ['Komentar per transaksi', 'Notifikasi Telegram', 'Owner & admin'],
+    },
+    {
       id: 'goals',
       span: '',
       accent: { bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.18)', text: '#93c5fd', glow: 'rgba(59,130,246,0.1)' },
