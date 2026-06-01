@@ -1,5 +1,5 @@
-import { db } from '@/lib/db'
-import { business, transaction, user, goal, budget } from '@/lib/db/schema'
+﻿import { db } from '@/lib/db'
+import { business, transaction, user, goal, budget, businessMember } from '@/lib/db/schema'
 import { and, eq, gte, lte } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { extractTransactionsFromText, extractTransactionsFromImage, chatWithAI } from '@/lib/gemini'
@@ -73,6 +73,39 @@ async function findUserByPhoneNumber(phoneNumber: string) {
   })
 }
 
+/**
+ * Ambil bisnis yang bisa diakses user via Telegram.
+ * Prioritas: bisnis yang dimiliki → bisnis yang jadi member aktif.
+ * Return { business, ownerId, role }
+ */
+async function getAccessibleBusinessForTelegram(userId: string) {
+  // Cek bisnis yang dimiliki dulu
+  const ownedBusinesses = await db.query.business.findMany({
+    where: eq(business.userId, userId),
+  })
+  if (ownedBusinesses.length > 0) {
+    return { business: ownedBusinesses[0], ownerId: userId, role: 'owner' as const }
+  }
+
+  // Cek membership aktif
+  const membership = await db.query.businessMember.findFirst({
+    where: and(
+      eq(businessMember.userId, userId),
+      eq(businessMember.status, 'active')
+    ),
+    orderBy: (m, { asc }) => [asc(m.joinedAt)],
+  })
+
+  if (!membership) return null
+
+  const biz = await db.query.business.findFirst({
+    where: eq(business.id, membership.businessId),
+  })
+  if (!biz) return null
+
+  return { business: biz, ownerId: biz.userId, role: membership.role as 'admin' | 'viewer' }
+}
+
 // Kirim file PDF ke Telegram user via sendDocument
 async function sendTelegramDocument(
   chatId: number,
@@ -110,7 +143,7 @@ async function sendTelegramDocument(
 
 // Ambil data laporan dari DB dan format untuk PDF
 async function buildReportData(
-  userId: string,
+  ownerId: string,
   businessId: string,
   businessName: string,
   businessType: string,
@@ -138,7 +171,6 @@ async function buildReportData(
 
   const whereConditions = [
     eq(transaction.businessId, businessId),
-    eq(transaction.userId, userId),
     ...(startDate ? [gte(transaction.createdAt, startDate)] : []),
     ...(endDate ? [lte(transaction.createdAt, endDate)] : []),
   ]
@@ -148,8 +180,8 @@ async function buildReportData(
       where: and(...whereConditions as any),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
     }),
-    db.query.goal.findMany({ where: and(eq(goal.businessId, businessId), eq(goal.userId, userId)) }),
-    db.query.budget.findMany({ where: and(eq(budget.businessId, businessId), eq(budget.userId, userId)) }),
+    db.query.goal.findMany({ where: and(eq(goal.businessId, businessId), eq(goal.userId, ownerId)) }),
+    db.query.budget.findMany({ where: and(eq(budget.businessId, businessId), eq(budget.userId, ownerId)) }),
   ])
 
   const totalIncome = txns.filter(t => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
@@ -304,13 +336,15 @@ export async function handleTelegramUpdate(update: any) {
   if (messageText === '/status') {
     let userRecord = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
     if (userRecord) {
-      const businesses = await db.query.business.findMany({ where: eq(business.userId, userRecord.id) })
+      const bizAccess = await getAccessibleBusinessForTelegram(userRecord.id)
+      const roleLabel = bizAccess?.role === 'owner' ? 'Pemilik' : bizAccess?.role === 'admin' ? 'Admin' : 'Viewer'
       await sendTelegramMessage(
         chatId,
         `✅ <b>Akun terhubung</b>\n\n` +
         `👤 Nama: ${userRecord.name || '-'}\n` +
         `📧 Email: ${userRecord.email}\n` +
-        `🏪 Bisnis aktif: ${businesses.length > 0 ? businesses[0].name : 'Belum ada'}\n` +
+        `🏪 Bisnis aktif: ${bizAccess ? bizAccess.business.name : 'Belum ada'}\n` +
+        `👔 Role: ${bizAccess ? roleLabel : '-'}\n` +
         `📱 Tipe akun: ${userRecord.accountType || 'personal'}`,
         'HTML'
       )
@@ -330,12 +364,12 @@ export async function handleTelegramUpdate(update: any) {
       await sendTelegramMessage(chatId, '❌ Akun belum terhubung. Ketik /start untuk info.')
       return
     }
-    const tempBusinesses = await db.query.business.findMany({ where: eq(business.userId, tempUser.id) })
-    if (tempBusinesses.length === 0) {
-      await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis. Buat bisnis di aplikasi KasAI.')
+    const bizAccess = await getAccessibleBusinessForTelegram(tempUser.id)
+    if (!bizAccess) {
+      await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis. Buat bisnis di aplikasi KasAI atau minta owner untuk mengundang Anda.')
       return
     }
-    const biz = tempBusinesses[0]
+    const biz = bizAccess.business
     const now = new Date()
     const isWeek = messageText === '/laporan_minggu'
     let startDate: Date, endDate: Date, periodLabel: string
@@ -354,7 +388,6 @@ export async function handleTelegramUpdate(update: any) {
     const txns = await db.query.transaction.findMany({
       where: and(
         eq(transaction.businessId, biz.id),
-        eq(transaction.userId, tempUser.id),
         gte(transaction.createdAt, startDate),
         lte(transaction.createdAt, endDate)
       ),
@@ -409,12 +442,12 @@ export async function handleTelegramUpdate(update: any) {
       await sendTelegramMessage(chatId, '❌ Akun belum terhubung. Ketik /start untuk info.')
       return
     }
-    const tempBusinesses = await db.query.business.findMany({ where: eq(business.userId, tempUser.id) })
-    if (tempBusinesses.length === 0) {
-      await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis. Buat bisnis di aplikasi KasAI.')
+    const bizAccess = await getAccessibleBusinessForTelegram(tempUser.id)
+    if (!bizAccess) {
+      await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis. Buat bisnis di aplikasi KasAI atau minta owner untuk mengundang Anda.')
       return
     }
-    const biz = tempBusinesses[0]
+    const biz = bizAccess.business
 
     const period: 'month' | 'week' | 'all' =
       messageText === '/pdf_minggu' ? 'week' :
@@ -423,11 +456,10 @@ export async function handleTelegramUpdate(update: any) {
     const periodLabel = period === 'week' ? 'Minggu Ini' : period === 'all' ? 'Semua Waktu' :
       new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
 
-    // Kirim notif dulu karena generate PDF butuh beberapa detik
     await sendTelegramMessage(chatId, `⏳ Membuat laporan PDF <b>${periodLabel}</b>...`, 'HTML')
 
     try {
-      const reportData = await buildReportData(tempUser.id, biz.id, biz.name, biz.type, period)
+      const reportData = await buildReportData(bizAccess.ownerId, biz.id, biz.name, biz.type, period)
       const pdfBuffer = await generateReportPdf(reportData)
 
       const now = new Date()
@@ -454,10 +486,11 @@ export async function handleTelegramUpdate(update: any) {
   if (messageText === '/budget') {
     const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
     if (!tempUser) { await sendTelegramMessage(chatId, '❌ Akun belum terhubung.'); return }
-    const tempBiz = (await db.query.business.findMany({ where: eq(business.userId, tempUser.id) }))[0]
-    if (!tempBiz) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
+    const bizAccess = await getAccessibleBusinessForTelegram(tempUser.id)
+    if (!bizAccess) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
+    const tempBiz = bizAccess.business
 
-    const budgets = await db.query.budget.findMany({ where: and(eq(budget.businessId, tempBiz.id), eq(budget.userId, tempUser.id)) })
+    const budgets = await db.query.budget.findMany({ where: and(eq(budget.businessId, tempBiz.id), eq(budget.userId, bizAccess.ownerId)) })
     if (budgets.length === 0) {
       await sendTelegramMessage(chatId, '📋 Belum ada budget yang ditetapkan.\n\nAtur budget di menu <b>Goals &amp; Budget</b> di aplikasi KasAI.', 'HTML')
       return
@@ -466,7 +499,7 @@ export async function handleTelegramUpdate(update: any) {
     const now = new Date()
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
     const txns = await db.query.transaction.findMany({
-      where: and(eq(transaction.businessId, tempBiz.id), eq(transaction.userId, tempUser.id), gte(transaction.createdAt, startMonth)),
+      where: and(eq(transaction.businessId, tempBiz.id), gte(transaction.createdAt, startMonth)),
     })
 
     const spentByCategory: Record<string, number> = {}
@@ -501,10 +534,11 @@ export async function handleTelegramUpdate(update: any) {
   if (messageText === '/target') {
     const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
     if (!tempUser) { await sendTelegramMessage(chatId, '❌ Akun belum terhubung.'); return }
-    const tempBiz = (await db.query.business.findMany({ where: eq(business.userId, tempUser.id) }))[0]
-    if (!tempBiz) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
+    const bizAccessTarget = await getAccessibleBusinessForTelegram(tempUser.id)
+    if (!bizAccessTarget) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
+    const tempBiz = bizAccessTarget.business
 
-    const goals = await db.query.goal.findMany({ where: and(eq(goal.businessId, tempBiz.id), eq(goal.userId, tempUser.id)) })
+    const goals = await db.query.goal.findMany({ where: and(eq(goal.businessId, tempBiz.id), eq(goal.userId, bizAccessTarget.ownerId)) })
     if (goals.length === 0) {
       await sendTelegramMessage(chatId, '🎯 Belum ada target keuangan.\n\nTambahkan target di menu <b>Goals &amp; Budget</b> di aplikasi KasAI.', 'HTML')
       return
@@ -571,19 +605,20 @@ export async function handleTelegramUpdate(update: any) {
       .where(eq(user.id, userRecord.id))
   }
 
-  const businesses = await db.query.business.findMany({
-    where: eq(business.userId, userRecord.id),
-  })
+  // Cari bisnis yang bisa diakses (owner atau member aktif)
+  const bizAccess = await getAccessibleBusinessForTelegram(userRecord.id)
 
-  if (businesses.length === 0) {
+  if (!bizAccess) {
     await sendTelegramMessage(
       chatId,
-      '⚠️ Akun Anda belum memiliki bisnis. Silakan buat bisnis terlebih dahulu di aplikasi KasAI.'
+      'Akun Anda belum memiliki bisnis dan belum diundang ke bisnis manapun. Buat bisnis di aplikasi KasAI atau minta pemilik bisnis untuk mengundang Anda.'
     )
     return
   }
 
-  const activeBusiness = businesses[0]
+  const activeBusiness = bizAccess.business
+  const activeBusinessOwnerId = bizAccess.ownerId
+  const activeRole = bizAccess.role
 
   // ── Handle foto / struk ────────────────────────────────────────────────────
   if (message.photo && Array.isArray(message.photo) && message.photo.length > 0) {
@@ -618,7 +653,8 @@ export async function handleTelegramUpdate(update: any) {
         await db.insert(transaction).values({
           id,
           businessId: activeBusiness.id,
-          userId: userRecord.id,
+          userId: activeBusinessOwnerId,
+          inputByUserId: userRecord.id,
           amount: item.amount.toString(),
           transaction_type: item.transactionType,
           description,
@@ -653,7 +689,8 @@ export async function handleTelegramUpdate(update: any) {
           await db.insert(transaction).values({
             id: nanoid(),
             businessId: activeBusiness.id,
-            userId: userRecord.id,
+            userId: activeBusinessOwnerId,
+            inputByUserId: userRecord.id,
             amount: item.amount.toString(),
             transaction_type: item.transactionType,
             description: item.description,
@@ -712,7 +749,8 @@ export async function handleTelegramUpdate(update: any) {
         await db.insert(transaction).values({
           id,
           businessId: activeBusiness.id,
-          userId: userRecord.id,
+          userId: activeBusinessOwnerId,
+          inputByUserId: userRecord.id,
           amount: item.amount.toString(),
           transaction_type: item.transactionType,
           description: item.description,
@@ -743,9 +781,9 @@ export async function handleTelegramUpdate(update: any) {
           const now = new Date()
           const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
           const [budgets, monthTxns] = await Promise.all([
-            db.query.budget.findMany({ where: and(eq(budget.businessId, activeBusiness.id), eq(budget.userId, userRecord.id)) }),
+            db.query.budget.findMany({ where: and(eq(budget.businessId, activeBusiness.id), eq(budget.userId, activeBusinessOwnerId)) }),
             db.query.transaction.findMany({
-              where: and(eq(transaction.businessId, activeBusiness.id), eq(transaction.userId, userRecord.id), gte(transaction.createdAt, startMonth)),
+              where: and(eq(transaction.businessId, activeBusiness.id), gte(transaction.createdAt, startMonth)),
             }),
           ])
 

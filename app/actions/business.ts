@@ -2,7 +2,7 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { business, category, businessProducts, user } from '@/lib/db/schema'
+import { business, category, businessProducts, user, businessMember } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -55,17 +55,58 @@ export async function createBusiness(
 
 export async function getUserBusinesses() {
   const userId = await getUserId()
-  return db.query.business.findMany({
+
+  // Bisnis yang dimiliki
+  const ownedBusinesses = await db.query.business.findMany({
     where: eq(business.userId, userId),
   })
+
+  // Bisnis yang jadi member aktif
+  const memberships = await db.query.businessMember.findMany({
+    where: and(
+      eq(businessMember.userId, userId),
+      eq(businessMember.status, 'active')
+    ),
+  })
+
+  // Ambil bisnis dari membership
+  const memberBusinessIds = memberships.map((m) => m.businessId)
+  const memberBusinesses = memberBusinessIds.length > 0
+    ? await db.query.business.findMany({
+        where: (b, { inArray }) => inArray(b.id, memberBusinessIds),
+      })
+    : []
+
+  // Gabungkan, tandai role
+  const owned = ownedBusinesses.map((b) => ({ ...b, _role: 'owner' as const, _isOwner: true }))
+  const member = memberBusinesses.map((b) => {
+    const membership = memberships.find((m) => m.businessId === b.id)
+    return { ...b, _role: (membership?.role ?? 'admin') as 'admin' | 'viewer', _isOwner: false }
+  })
+
+  return [...owned, ...member]
 }
 
 export async function getBusiness(businessId: string) {
   const userId = await getUserId()
+
   const biz = await db.query.business.findFirst({
-    where: and(eq(business.id, businessId), eq(business.userId, userId)),
+    where: eq(business.id, businessId),
   })
   if (!biz) throw new Error('Business not found')
+
+  // Cek akses: owner atau member aktif
+  if (biz.userId !== userId) {
+    const member = await db.query.businessMember.findFirst({
+      where: and(
+        eq(businessMember.businessId, businessId),
+        eq(businessMember.userId, userId),
+        eq(businessMember.status, 'active')
+      ),
+    })
+    if (!member) throw new Error('Access denied')
+  }
+
   return biz
 }
 

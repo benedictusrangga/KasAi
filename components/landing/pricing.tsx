@@ -82,7 +82,7 @@ export function LandingPricing() {
 
         {/* BUSINESS plans */}
         <div>
-          <SectionDivider label="Business" sub="Multi-bisnis · Dashboard konsolidasi" isDark={isDark} />
+          <SectionDivider label="Business" sub="Multi-bisnis · Tim kolaborasi · Dashboard konsolidasi" isDark={isDark} />
           <div className="grid sm:grid-cols-3 gap-5 max-w-4xl mx-auto">
             {PLAN_GROUPS.business.map((plan) => (
               <PlanCard

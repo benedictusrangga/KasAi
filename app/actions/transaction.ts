@@ -2,12 +2,13 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { transaction, business, user } from '@/lib/db/schema'
-import { and, eq, desc, gte, count } from 'drizzle-orm'
+import { transaction, business, user, businessMember } from '@/lib/db/schema'
+import { and, eq, desc, gte, count, or } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
 import { getPlan, isLimitReached } from '@/lib/plan-limits'
+import { getBusinessAccess } from './members'
 
 async function getUserId() {
   const h = await headers()
@@ -18,6 +19,18 @@ async function getUserId() {
   const session = await auth.api.getSession({ headers: reqHeaders })
   if (!session?.user) throw new Error('Unauthorized')
   return session.user.id
+}
+
+/**
+ * Ambil userId owner dari sebuah bisnis.
+ * Dipakai untuk plan limit counting — limit selalu dihitung dari owner.
+ */
+async function getBusinessOwnerId(businessId: string): Promise<string> {
+  const biz = await db.query.business.findFirst({
+    where: eq(business.id, businessId),
+  })
+  if (!biz) throw new Error('Business not found')
+  return biz.userId
 }
 
 export async function createTransaction(
@@ -33,19 +46,20 @@ export async function createTransaction(
 ) {
   const userId = await getUserId()
 
-  // Verifikasi bisnis milik user ini
-  const biz = await db.query.business.findFirst({
-    where: and(eq(business.id, businessId), eq(business.userId, userId)),
-  })
-  if (!biz) throw new Error('Business not found or access denied')
+  // Verifikasi akses (owner atau member admin)
+  const access = await getBusinessAccess(businessId, userId)
+  if (access.role === 'viewer') throw new Error('Viewer tidak dapat menambah transaksi')
+
+  // Owner ID untuk plan limit counting
+  const ownerId = await getBusinessOwnerId(businessId)
 
   // Validasi amount
   if (isNaN(amount) || amount <= 0) throw new Error('Jumlah harus lebih dari 0')
   if (!description?.trim()) throw new Error('Deskripsi tidak boleh kosong')
 
-  // Enforce plan limits
-  const currentUser = await db.query.user.findFirst({ where: eq(user.id, userId) })
-  const plan = getPlan(currentUser?.plan)
+  // Enforce plan limits (berdasarkan plan owner)
+  const ownerUser = await db.query.user.findFirst({ where: eq(user.id, ownerId) })
+  const plan = getPlan(ownerUser?.plan)
 
   if (plan.maxTxPerMonth !== Infinity) {
     const now = new Date()
@@ -53,7 +67,7 @@ export async function createTransaction(
     const [{ value: txCount }] = await db
       .select({ value: count() })
       .from(transaction)
-      .where(and(eq(transaction.userId, userId), gte(transaction.createdAt, startMonth)))
+      .where(and(eq(transaction.businessId, businessId), gte(transaction.createdAt, startMonth)))
 
     if (txCount >= plan.maxTxPerMonth) {
       throw new Error(
@@ -66,11 +80,11 @@ export async function createTransaction(
   await db.insert(transaction).values({
     id,
     businessId,
-    userId,
+    userId: ownerId,          // selalu owner untuk konsistensi data & plan limit
+    inputByUserId: userId,    // siapa yang benar-benar input (bisa admin)
     amount: amount.toFixed(2),
     transaction_type: transactionType,
     description: description.trim(),
-    // categoryId hanya disimpan jika berupa UUID valid (bukan enum string)
     categoryId: categoryId && categoryId.length > 10 ? categoryId : undefined,
     source,
     receipt_url: receiptUrl,
@@ -85,22 +99,22 @@ export async function createTransaction(
 
 export async function getTransactions(businessId: string) {
   const userId = await getUserId()
+  // Verifikasi akses
+  await getBusinessAccess(businessId, userId)
+
   return db.query.transaction.findMany({
-    where: and(
-      eq(transaction.businessId, businessId),
-      eq(transaction.userId, userId)
-    ),
+    where: eq(transaction.businessId, businessId),
     orderBy: desc(transaction.createdAt),
   })
 }
 
 export async function getBusinessTransactions(businessId: string) {
   const userId = await getUserId()
+  // Verifikasi akses
+  await getBusinessAccess(businessId, userId)
+
   return db.query.transaction.findMany({
-    where: and(
-      eq(transaction.businessId, businessId),
-      eq(transaction.userId, userId)
-    ),
+    where: eq(transaction.businessId, businessId),
     orderBy: desc(transaction.createdAt),
   })
 }
@@ -108,9 +122,12 @@ export async function getBusinessTransactions(businessId: string) {
 export async function getTransaction(transactionId: string) {
   const userId = await getUserId()
   const txn = await db.query.transaction.findFirst({
-    where: and(eq(transaction.id, transactionId), eq(transaction.userId, userId)),
+    where: eq(transaction.id, transactionId),
   })
   if (!txn) throw new Error('Transaction not found')
+
+  // Verifikasi akses ke bisnis
+  await getBusinessAccess(txn.businessId, userId)
   return txn
 }
 
@@ -127,9 +144,13 @@ export async function updateTransaction(
   const userId = await getUserId()
 
   const txn = await db.query.transaction.findFirst({
-    where: and(eq(transaction.id, transactionId), eq(transaction.userId, userId)),
+    where: eq(transaction.id, transactionId),
   })
   if (!txn) throw new Error('Transaction not found')
+
+  // Verifikasi akses — viewer tidak bisa edit
+  const access = await getBusinessAccess(txn.businessId, userId)
+  if (access.role === 'viewer') throw new Error('Viewer tidak dapat mengubah transaksi')
 
   await db
     .update(transaction)
@@ -138,7 +159,7 @@ export async function updateTransaction(
       amount: updates.amount ? updates.amount.toString() : undefined,
       updatedAt: new Date(),
     })
-    .where(and(eq(transaction.id, transactionId), eq(transaction.userId, userId)))
+    .where(eq(transaction.id, transactionId))
 
   revalidatePath('/')
   return { transactionId, ...updates }
@@ -147,9 +168,18 @@ export async function updateTransaction(
 export async function deleteTransaction(transactionId: string) {
   const userId = await getUserId()
 
+  const txn = await db.query.transaction.findFirst({
+    where: eq(transaction.id, transactionId),
+  })
+  if (!txn) throw new Error('Transaction not found')
+
+  // Hanya owner yang bisa hapus transaksi
+  const access = await getBusinessAccess(txn.businessId, userId)
+  if (!access.isOwner) throw new Error('Hanya pemilik bisnis yang dapat menghapus transaksi')
+
   await db
     .delete(transaction)
-    .where(and(eq(transaction.id, transactionId), eq(transaction.userId, userId)))
+    .where(eq(transaction.id, transactionId))
 
   revalidatePath('/')
   return { transactionId }
@@ -157,11 +187,13 @@ export async function deleteTransaction(transactionId: string) {
 
 export async function getTransactionCountThisMonth(businessId: string): Promise<number> {
   const userId = await getUserId()
+  await getBusinessAccess(businessId, userId)
+
   const now = new Date()
   const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const [{ value }] = await db
     .select({ value: count() })
     .from(transaction)
-    .where(and(eq(transaction.userId, userId), gte(transaction.createdAt, startMonth)))
+    .where(and(eq(transaction.businessId, businessId), gte(transaction.createdAt, startMonth)))
   return value
 }

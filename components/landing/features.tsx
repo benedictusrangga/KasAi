@@ -78,6 +78,24 @@ export function LandingFeatures() {
       desc: 'Kelola beberapa bisnis dari satu akun. Setiap bisnis punya dashboard, laporan, kategori, dan produk sendiri yang terpisah.',
     },
     {
+      id: 'team',
+      span: 'lg:col-span-2',
+      badge: 'Business Pro & Enterprise',
+      accent: { bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.22)', text: '#6ee7b7', glow: 'rgba(16,185,129,0.12)' },
+      accentLight: { bg: 'rgba(16,185,129,0.06)', border: 'rgba(16,185,129,0.18)', text: '#059669', glow: 'rgba(16,185,129,0.08)' },
+      icon: (color: string) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <circle cx="9" cy="7" r="4" stroke={color} strokeWidth="1.5"/>
+          <path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M16 3.13a4 4 0 010 7.75" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M21 21v-2a4 4 0 00-3-3.87" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      ),
+      title: 'Tim Kolaborasi — Admin & Owner',
+      desc: 'Pemilik bisnis undang kasir atau admin sebagai anggota tim. Admin catat transaksi via Telegram atau dashboard — semua data langsung masuk ke bisnis owner secara real-time. Owner pantau laporan gabungan semua admin dari satu dashboard.',
+      tags: ['Audit trail per anggota', 'Filter transaksi by admin', 'Telegram bot untuk admin', 'Max 3 admin (Pro) · Unlimited (Enterprise)'],
+    },
+    {
       id: 'goals',
       span: '',
       accent: { bg: 'rgba(59,130,246,0.07)', border: 'rgba(59,130,246,0.18)', text: '#93c5fd', glow: 'rgba(59,130,246,0.1)' },

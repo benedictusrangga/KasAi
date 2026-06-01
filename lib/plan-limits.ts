@@ -21,6 +21,7 @@ export const PLANS = {
     scanReceipt: true,
     telegramBot: true,
     multiUser: false,
+    maxMembers: 0,
     features: [
       '1 bisnis / workspace',
       '50 transaksi per bulan',
@@ -50,6 +51,7 @@ export const PLANS = {
     scanReceipt: true,
     telegramBot: true,
     multiUser: false,
+    maxMembers: 0,
     features: [
       '1 bisnis / workspace',
       '200 transaksi per bulan',
@@ -79,6 +81,7 @@ export const PLANS = {
     scanReceipt: true,
     telegramBot: true,
     multiUser: false,
+    maxMembers: 0,
     features: [
       '1 bisnis / workspace',
       '500 transaksi per bulan',
@@ -109,6 +112,7 @@ export const PLANS = {
     scanReceipt: true,
     telegramBot: true,
     multiUser: false,
+    maxMembers: 0,
     features: [
       '1 bisnis / workspace',
       '1.000 transaksi per bulan',
@@ -139,6 +143,7 @@ export const PLANS = {
     scanReceipt: true,
     telegramBot: true,
     multiUser: false,
+    maxMembers: 0,
     features: [
       '1 bisnis / workspace',
       'Transaksi tak terbatas',
@@ -170,6 +175,7 @@ export const PLANS = {
     scanReceipt: true,
     telegramBot: true,
     multiUser: false,
+    maxMembers: 0,
     features: [
       'Hingga 3 bisnis',
       '2.000 transaksi per bulan',
@@ -199,7 +205,8 @@ export const PLANS = {
     pdfExport: true,
     scanReceipt: true,
     telegramBot: true,
-    multiUser: false,
+    multiUser: true,
+    maxMembers: 3, // max 3 admin/member per bisnis
     features: [
       'Hingga 10 bisnis',
       'Transaksi tak terbatas',
@@ -210,6 +217,7 @@ export const PLANS = {
       'Goals & Budget per bisnis',
       'Dashboard multi-bisnis',
       'Laporan konsolidasi',
+      'Multi-user hingga 3 admin',
     ],
     highlight: true,
     cta: 'Pilih Pro',
@@ -231,6 +239,7 @@ export const PLANS = {
     scanReceipt: true,
     telegramBot: true,
     multiUser: true,
+    maxMembers: Infinity, // unlimited members
     features: [
       'Bisnis tak terbatas',
       'Transaksi tak terbatas',
@@ -241,7 +250,8 @@ export const PLANS = {
       'Goals & Budget per bisnis',
       'Dashboard multi-bisnis',
       'Laporan konsolidasi',
-      'Multi-user & tim',
+      'Multi-user anggota tak terbatas',
+      'Role: owner, admin & viewer',
       'Dedicated support',
     ],
     highlight: false,
@@ -276,6 +286,18 @@ export function canAddBusiness(businessCount: number, planId: string | null | un
   const plan = getPlan(planId)
   if (plan.maxBusinesses === Infinity) return true
   return businessCount < plan.maxBusinesses
+}
+
+export function canAddMember(currentMemberCount: number, planId: string | null | undefined): boolean {
+  const plan = getPlan(planId)
+  if (!plan.multiUser) return false
+  if (plan.maxMembers === Infinity) return true
+  return currentMemberCount < plan.maxMembers
+}
+
+export function getMaxMembers(planId: string | null | undefined): number {
+  const plan = getPlan(planId)
+  return plan.maxMembers
 }
 
 export function formatPrice(price: number): string {

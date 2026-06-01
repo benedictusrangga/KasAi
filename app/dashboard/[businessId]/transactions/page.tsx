@@ -3,6 +3,7 @@
 import { use, useState, useEffect } from 'react'
 import { getTransactions } from '@/app/actions/transaction'
 import { getBusinessCategories } from '@/app/actions/business'
+import { getBusinessMembers } from '@/app/actions/members'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,18 +28,29 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
   const { businessId } = use(params)
   const [transactions, setTransactions] = useState<any[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [memberMap, setMemberMap] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
+  const [filterMember, setFilterMember] = useState('all')
 
   useEffect(() => {
     Promise.all([
       getTransactions(businessId),
       getBusinessCategories(businessId).catch(() => []),
+      getBusinessMembers(businessId).catch(() => []),
     ])
-      .then(([txns, cats]) => {
+      .then(([txns, cats, members]) => {
         setTransactions(txns)
         setCategories(cats)
+        // Build map: userId → display name
+        const map: Record<string, string> = {}
+        members.forEach((m: any) => {
+          if (m.userId) {
+            map[m.userId] = m.user?.name || m.email
+          }
+        })
+        setMemberMap(map)
       })
       .catch(console.error)
       .finally(() => setIsLoading(false))
@@ -50,12 +62,18 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
     return acc
   }, {})
 
+  // Unique inputters for filter dropdown
+  const uniqueInputters = Array.from(
+    new Set(transactions.map((t) => t.inputByUserId).filter(Boolean))
+  )
+
   const filtered = transactions.filter((t) => {
     const matchSearch =
       t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.notes?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchType = filterType === 'all' || t.transaction_type === filterType
-    return matchSearch && matchType
+    const matchMember = filterMember === 'all' || t.inputByUserId === filterMember
+    return matchSearch && matchType && matchMember
   })
 
   const totalIncome = filtered
@@ -103,14 +121,14 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
       )}
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-6 flex-wrap">
         <Input
           placeholder="Cari transaksi..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-xs"
         />
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {(['all', 'income', 'expense'] as const).map((type) => (
             <button
               key={type}
@@ -125,6 +143,21 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
             </button>
           ))}
         </div>
+        {/* Filter by member — hanya tampil jika ada lebih dari 1 inputter */}
+        {uniqueInputters.length > 1 && (
+          <select
+            value={filterMember}
+            onChange={(e) => setFilterMember(e.target.value)}
+            className="px-3 py-2 rounded-lg text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="all">Semua anggota</option>
+            {uniqueInputters.map((uid) => (
+              <option key={uid} value={uid}>
+                {memberMap[uid] || uid}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* List */}
@@ -151,60 +184,73 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
-            {filtered.map((txn) => (
-              <div
-                key={txn.id}
-                className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
-              >
-                <div className="flex items-center gap-4 min-w-0">
-                  <div
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm ${
-                      txn.transaction_type === 'income'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-rose-100 text-rose-700'
-                    }`}
-                  >
-                    {txn.transaction_type === 'income' ? '↑' : '↓'}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {txn.description}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-xs text-muted-foreground">
-                        {SOURCE_ICONS[txn.source]}{' '}
-                        {new Date(txn.createdAt).toLocaleDateString('id-ID', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </span>
-                      {txn.categoryId && categoryMap[txn.categoryId] && (
-                        <Badge variant="secondary" className="text-xs py-0 h-4">
-                          {categoryMap[txn.categoryId]}
-                        </Badge>
+            {filtered.map((txn) => {
+              const inputterName = txn.inputByUserId
+                ? memberMap[txn.inputByUserId] || null
+                : null
+
+              return (
+                <div
+                  key={txn.id}
+                  className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm ${
+                        txn.transaction_type === 'income'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-rose-100 text-rose-700'
+                      }`}
+                    >
+                      {txn.transaction_type === 'income' ? '↑' : '↓'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {txn.description}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-xs text-muted-foreground">
+                          {SOURCE_ICONS[txn.source]}{' '}
+                          {new Date(txn.createdAt).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </span>
+                        {txn.categoryId && categoryMap[txn.categoryId] && (
+                          <Badge variant="secondary" className="text-xs py-0 h-4">
+                            {categoryMap[txn.categoryId]}
+                          </Badge>
+                        )}
+                        {/* Badge "dicatat oleh" jika ada member yang input */}
+                        {inputterName && (
+                          <Badge variant="outline" className="text-xs py-0 h-4 text-blue-600 border-blue-200">
+                            👤 {inputterName}
+                          </Badge>
+                        )}
+                      </div>
+                      {txn.notes && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {txn.notes}
+                        </p>
                       )}
                     </div>
-                    {txn.notes && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {txn.notes}
-                      </p>
-                    )}
                   </div>
+                  <p
+                    className={`text-sm font-semibold shrink-0 ml-4 ${
+                      txn.transaction_type === 'income' ? 'text-emerald-600' : 'text-rose-500'
+                    }`}
+                  >
+                    {txn.transaction_type === 'income' ? '+' : '-'}Rp{' '}
+                    {parseFloat(txn.amount).toLocaleString('id-ID')}
+                  </p>
                 </div>
-                <p
-                  className={`text-sm font-semibold shrink-0 ml-4 ${
-                    txn.transaction_type === 'income' ? 'text-emerald-600' : 'text-rose-500'
-                  }`}
-                >
-                  {txn.transaction_type === 'income' ? '+' : '-'}Rp{' '}
-                  {parseFloat(txn.amount).toLocaleString('id-ID')}
-                </p>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
     </div>
   )
 }
+

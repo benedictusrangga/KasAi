@@ -3,7 +3,9 @@ import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getBusiness, getBusinessCategories, getBusinessProducts, getCurrentUser } from '@/app/actions/business'
 import { getTransactionCountThisMonth } from '@/app/actions/transaction'
+import { getBusinessAccess } from '@/app/actions/members'
 import { SettingsPanel } from '@/components/settings-panel'
+import MembersPanel from '@/components/members-panel'
 
 export const metadata = { title: 'Pengaturan — KasAI' }
 export const dynamic = 'force-dynamic'
@@ -19,29 +21,41 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
   if (!session?.user) redirect('/sign-in')
 
   try {
-    const [business, categories, products, user, txThisMonth] = await Promise.all([
+    const [biz, categories, products, user, txThisMonth, access] = await Promise.all([
       getBusiness(businessId),
       getBusinessCategories(businessId),
       getBusinessProducts(businessId),
       getCurrentUser(),
       getTransactionCountThisMonth(businessId).catch(() => 0),
+      getBusinessAccess(businessId, session.user.id),
     ])
 
     return (
-      <div className="p-8">
-        <div className="mb-8">
+      <div className="p-8 space-y-10">
+        <div className="mb-2">
           <h1 className="text-3xl font-bold text-foreground">Pengaturan</h1>
           <p className="text-muted-foreground mt-1">
             Kelola profil, bisnis, kategori, integrasi Telegram, dan plan
           </p>
         </div>
+
         <SettingsPanel
-          business={business}
+          business={biz}
           user={user}
           categories={categories}
           products={products}
           txThisMonth={txThisMonth}
         />
+
+        {/* Multi-user section — tampil untuk semua (owner lihat full, member lihat info) */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <MembersPanel
+            businessId={businessId}
+            businessName={biz.name}
+            isOwner={access.isOwner}
+            ownerPlan={user.plan ?? 'free'}
+          />
+        </div>
       </div>
     )
   } catch (err) {

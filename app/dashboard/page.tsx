@@ -43,10 +43,12 @@ export default async function DashboardPage() {
   ])
 
   const isPersonal = currentUser.accountType === 'personal'
-  const canAddBusiness = !isPersonal || businesses.length === 0
+  // Bisnis yang dimiliki (bukan member)
+  const ownedBusinesses = businesses.filter((b: any) => b._isOwner)
+  const canAddBusiness = !isPersonal || ownedBusinesses.length === 0
 
-  // Personal dengan 1 bisnis → langsung ke dashboard bisnis
-  if (isPersonal && businesses.length === 1) {
+  // Personal dengan 1 bisnis (owned) → langsung ke dashboard bisnis
+  if (isPersonal && ownedBusinesses.length === 1 && businesses.length === 1) {
     redirect(`/dashboard/${businesses[0].id}`)
   }
 
@@ -151,7 +153,14 @@ export default async function DashboardPage() {
                       {BUSINESS_ICONS[biz.type] || '🏪'}
                     </div>
                     <div>
-                      <h2 className="font-semibold text-foreground">{biz.name}</h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-semibold text-foreground">{biz.name}</h2>
+                        {(biz as any)._role && (biz as any)._role !== 'owner' && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+                            {(biz as any)._role === 'admin' ? 'Admin' : 'Viewer'}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{BUSINESS_LABELS[biz.type] || biz.type}</p>
                     </div>
                   </div>

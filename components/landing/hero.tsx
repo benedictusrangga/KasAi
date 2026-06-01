@@ -89,7 +89,7 @@ export function LandingHero() {
           style={{ color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.5)' }}>
           Cukup chat ke bot Telegram — AI langsung mencatat transaksi,
           mengkategorikan pengeluaran, dan menyajikan laporan keuangan bisnis
-          Anda secara real-time. Tidak perlu spreadsheet, tidak perlu akuntan.
+          Anda secara real-time. Kasir Anda input, Anda pantau. Tidak perlu spreadsheet, tidak perlu akuntan.
         </p>
 
         {/* CTA buttons */}
@@ -299,12 +299,12 @@ export function LandingHero() {
               </svg>
             </div>
             <div>
-              <p className="text-xs font-semibold" style={{ color: isDark ? '#ffffff' : '#0a0a0a' }}>Transaksi dicatat ✓</p>
+              <p className="text-xs font-semibold" style={{ color: isDark ? '#ffffff' : '#0a0a0a' }}>Kasir mencatat ✓</p>
               <p className="text-[11px]" style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>beli bahan baku 450rb</p>
             </div>
           </div>
 
-          {/* Floating AI badge */}
+          {/* Floating team badge */}
           <div className="hidden lg:flex absolute -left-8 bottom-10 items-center gap-2.5 rounded-2xl px-4 py-3 pointer-events-none backdrop-blur-xl"
             style={{
               border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
@@ -313,13 +313,18 @@ export function LandingHero() {
                 ? '0 16px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)'
                 : '0 16px 48px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8)',
             }}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-              style={{ background: 'linear-gradient(135deg, #7C3AED, #6366F1)' }}>
-              <span className="text-white text-sm leading-none">✦</span>
+            {/* Avatar stack */}
+            <div className="flex -space-x-2 shrink-0">
+              {['#7C3AED', '#10b981', '#f59e0b'].map((color, i) => (
+                <div key={i} className="flex h-7 w-7 items-center justify-center rounded-full text-white text-[10px] font-bold ring-2 ring-white dark:ring-[#0f0f0f]"
+                  style={{ background: color }}>
+                  {['O', 'A', 'A'][i]}
+                </div>
+              ))}
             </div>
             <div>
-              <p className="text-xs font-semibold" style={{ color: isDark ? '#ffffff' : '#0a0a0a' }}>AI Insight</p>
-              <p className="text-[11px]" style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>Laba naik 31% bulan ini 🎉</p>
+              <p className="text-xs font-semibold" style={{ color: isDark ? '#ffffff' : '#0a0a0a' }}>Owner + 2 Admin</p>
+              <p className="text-[11px]" style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>Semua data terpantau 👁</p>
             </div>
           </div>
         </div>

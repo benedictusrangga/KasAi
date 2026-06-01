@@ -7,6 +7,7 @@ import {
   pgEnum,
   jsonb,
 } from 'drizzle-orm/pg-core'
+import { relations } from 'drizzle-orm'
 
 // --- Better Auth required tables -------------------------------------------
 // Column names are camelCase to match Better Auth's defaults. Do not rename.
@@ -113,11 +114,30 @@ export const businessTypeEnum = pgEnum('business_type', [
 // --- App tables ---
 export const business = pgTable('business', {
   id: text('id').primaryKey(),
-  userId: text('userId').notNull(),
+  userId: text('userId').notNull(),  // owner
   name: text('name').notNull(),
   type: businessTypeEnum('type').notNull(),
   description: text('description'),
   logo_url: text('logo_url'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+// Member roles: owner (auto), admin (can input transactions), viewer (read-only)
+export const memberRoleEnum = pgEnum('member_role', ['owner', 'admin', 'viewer'])
+export const memberStatusEnum = pgEnum('member_status', ['pending', 'active', 'removed'])
+
+export const businessMember = pgTable('business_member', {
+  id: text('id').primaryKey(),
+  businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
+  userId: text('userId').references(() => user.id, { onDelete: 'cascade' }), // null until accepted
+  invitedByUserId: text('invitedByUserId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),       // email yang diundang
+  role: memberRoleEnum('role').notNull().default('admin'),
+  status: memberStatusEnum('status').notNull().default('pending'),
+  inviteToken: text('inviteToken').unique(), // token untuk accept invite
+  invitedAt: timestamp('invitedAt').notNull().defaultNow(),
+  joinedAt: timestamp('joinedAt'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
@@ -136,7 +156,8 @@ export const category = pgTable('category', {
 export const transaction = pgTable('transaction', {
   id: text('id').primaryKey(),
   businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
-  userId: text('userId').notNull(),
+  userId: text('userId').notNull(),   // owner bisnis (untuk plan limit counting)
+  inputByUserId: text('inputByUserId'), // siapa yang benar-benar input (bisa admin/member)
   amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
   transaction_type: transactionTypeEnum('transaction_type').notNull().default('expense'),
   description: text('description').notNull(),
@@ -215,3 +236,25 @@ export const budget = pgTable('budget', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
+
+// ── Relations (untuk Drizzle query API dengan `with`) ─────────────────────────
+
+export const businessMemberRelations = relations(businessMember, ({ one }) => ({
+  business: one(business, {
+    fields: [businessMember.businessId],
+    references: [business.id],
+  }),
+  user: one(user, {
+    fields: [businessMember.userId],
+    references: [user.id],
+  }),
+  invitedBy: one(user, {
+    fields: [businessMember.invitedByUserId],
+    references: [user.id],
+    relationName: 'invitedByUser',
+  }),
+}))
+
+export const businessRelations = relations(business, ({ many }) => ({
+  members: many(businessMember),
+}))
