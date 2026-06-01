@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname, useParams, useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: (id: string) => `/dashboard/${id}`, icon: '▦', exact: true },
@@ -30,8 +29,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleSignOut = async () => {
     setSigningOut(true)
-    await authClient.signOut()
-    router.push('/')
+    try {
+      await authClient.signOut()
+    } finally {
+      // Hard redirect ke landing page — clear semua state
+      window.location.href = '/'
+    }
   }
 
   return (

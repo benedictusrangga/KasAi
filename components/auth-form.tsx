@@ -39,7 +39,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
         if (res.ok) {
           const data = await res.json()
           if (data?.needsSetup) {
-            router.push('/onboarding/account-type')
+            window.location.href = '/onboarding/account-type'
             return
           }
         }
@@ -47,8 +47,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
         // fallback
       }
 
-      router.push('/dashboard')
-      router.refresh()
+      window.location.href = '/dashboard'
     } catch {
       setError('Terjadi kesalahan tak terduga.')
       setLoading(false)
