@@ -17,22 +17,29 @@ interface ExtractedExpense {
   category: string
 }
 
-const SUGGESTIONS = [
-  'Beli bahan baku kopi 450rb',
-  'Terima pembayaran dari pelanggan 1.2jt',
-  'Berapa pengeluaran bulan ini?',
-  'Bayar listrik 320.000',
-]
+const SUGGESTIONS_BY_TYPE: Record<string, string[]> = {
+  cafe: ['Beli bahan baku kopi 450rb', 'Penjualan hari ini 1.2jt', 'Berapa laba bulan ini?', 'Bayar listrik 320rb'],
+  laundry: ['Beli deterjen 150rb', 'Pendapatan laundry hari ini 800rb', 'Berapa pengeluaran bulan ini?', 'Bayar air 200rb'],
+  florist: ['Beli bunga mawar 300rb', 'Penjualan buket 500rb', 'Berapa laba minggu ini?', 'Bayar sewa toko 1jt'],
+  retail: ['Beli stok barang 2jt', 'Penjualan hari ini 1.5jt', 'Pengeluaran terbesar apa?', 'Bayar gaji karyawan 3jt'],
+  personal: ['Bayar makan siang 50rb', 'Terima gaji 5jt', 'Berapa pengeluaran bulan ini?', 'Bayar tagihan listrik 200rb'],
+  other: ['Catat pengeluaran 100rb', 'Catat pemasukan 500rb', 'Berapa saldo saya?', 'Pengeluaran terbesar apa?'],
+}
+
+const DEFAULT_SUGGESTIONS = SUGGESTIONS_BY_TYPE.other
 
 export function AiChat({
   chatId,
   businessId,
+  businessType,
   initialMessages = [],
 }: {
   chatId: string
   businessId: string
+  businessType?: string
   initialMessages?: Message[]
 }) {
+  const suggestions = SUGGESTIONS_BY_TYPE[businessType || 'other'] || DEFAULT_SUGGESTIONS
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -90,7 +97,7 @@ export function AiChat({
               Tanya tentang keuangan bisnis Anda, atau ceritakan transaksi — AI akan langsung mencatatnya.
             </p>
             <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   onClick={() => handleSend(s)}

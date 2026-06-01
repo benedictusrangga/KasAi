@@ -22,9 +22,9 @@ export default async function GoalsPage({ params }: { params: Promise<{ business
   try {
     const [business, goals, budgets, transactions] = await Promise.all([
       getBusiness(businessId),
-      getGoals(businessId),
-      getBudgets(businessId),
-      getBusinessTransactions(businessId),
+      getGoals(businessId).catch(() => []),
+      getBudgets(businessId).catch(() => []),
+      getBusinessTransactions(businessId).catch(() => []),
     ])
 
     // Hitung pengeluaran per kategori bulan ini

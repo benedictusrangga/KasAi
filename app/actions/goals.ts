@@ -2,7 +2,7 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { goal, budget } from '@/lib/db/schema'
+import { goal, budget, transaction } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -38,6 +38,15 @@ export async function createGoal(data: {
 }) {
   const userId = await getUserId()
   const id = nanoid()
+
+  // Hitung total income yang sudah ada sebagai starting point
+  const existingIncome = await db.query.transaction.findMany({
+    where: and(
+      eq(transaction.businessId, data.businessId),
+      eq(transaction.userId, userId),
+    ),
+  })
+  // Goals dimulai dari 0 — user tentukan sendiri progress awalnya
   await db.insert(goal).values({
     id,
     userId,

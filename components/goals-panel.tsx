@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createGoal, deleteGoal, upsertBudget, deleteBudget } from '@/app/actions/goals'
+import { createGoal, deleteGoal, updateGoalProgress, upsertBudget, deleteBudget } from '@/app/actions/goals'
 
 const CATEGORY_LABELS: Record<string, string> = {
   groceries: 'Bahan Makanan',
@@ -56,6 +56,8 @@ export function GoalsPanel({
   const [activeTab, setActiveTab] = useState<'goals' | 'budget'>('goals')
   const [isSaving, setIsSaving] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [editingProgress, setEditingProgress] = useState<string | null>(null)
+  const [progressInput, setProgressInput] = useState('')
 
   // Goal form
   const [newGoal, setNewGoal] = useState({ title: '', description: '', targetAmount: '', deadline: '' })
@@ -89,6 +91,23 @@ export function GoalsPanel({
       router.refresh()
     } catch {
       showStatus('error', 'Gagal menambahkan goal.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleUpdateProgress = async (goalId: string) => {
+    const amount = parseFloat(progressInput)
+    if (isNaN(amount) || amount < 0) { showStatus('error', 'Masukkan jumlah yang valid.'); return }
+    setIsSaving(true)
+    try {
+      await updateGoalProgress(goalId, amount)
+      setEditingProgress(null)
+      setProgressInput('')
+      showStatus('success', 'Progress target diperbarui.')
+      router.refresh()
+    } catch {
+      showStatus('error', 'Gagal memperbarui progress.')
     } finally {
       setIsSaving(false)
     }
@@ -259,7 +278,7 @@ export function GoalsPanel({
                     </div>
 
                     {/* Progress bar */}
-                    <div className="mb-2">
+                    <div className="mb-3">
                       <div className="flex justify-between text-xs text-muted-foreground mb-1">
                         <span>Rp {parseFloat(g.currentAmount).toLocaleString('id-ID')}</span>
                         <span>Rp {parseFloat(g.targetAmount).toLocaleString('id-ID')}</span>
@@ -280,10 +299,47 @@ export function GoalsPanel({
                       </div>
                     </div>
 
+                    {/* Update progress */}
+                    {!g.completed && (
+                      editingProgress === g.id ? (
+                        <div className="flex gap-2 mt-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
+                            <Input
+                              type="number"
+                              placeholder="Jumlah saat ini"
+                              value={progressInput}
+                              onChange={(e) => setProgressInput(e.target.value)}
+                              className="h-8 pl-8 text-xs"
+                              autoFocus
+                            />
+                          </div>
+                          <Button size="sm" className="h-8 text-xs" onClick={() => handleUpdateProgress(g.id)} disabled={isSaving}>
+                            Simpan
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setEditingProgress(null); setProgressInput('') }}>
+                            Batal
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full h-8 text-xs mt-1"
+                          onClick={() => { setEditingProgress(g.id); setProgressInput(g.currentAmount) }}
+                        >
+                          ✏️ Update Progress
+                        </Button>
+                      )
+                    )}
+
                     {g.deadline && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground mt-2">
                         📅 Deadline: {new Date(g.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </p>
+                    )}
+                    {g.completed && (
+                      <p className="text-xs text-emerald-600 font-medium mt-2">🎉 Target tercapai!</p>
                     )}
                   </div>
                 )

@@ -526,38 +526,42 @@ export async function handleTelegramUpdate(update: any) {
       // ── Budget alert setelah transaksi expense ─────────────────────────────
       const expenseItems = created.filter(item => item.transactionType === 'expense')
       if (expenseItems.length > 0) {
-        const now = new Date()
-        const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-        const [budgets, monthTxns] = await Promise.all([
-          db.query.budget.findMany({ where: and(eq(budget.businessId, activeBusiness.id), eq(budget.userId, userRecord.id)) }),
-          db.query.transaction.findMany({
-            where: and(eq(transaction.businessId, activeBusiness.id), eq(transaction.userId, userRecord.id), gte(transaction.createdAt, startMonth)),
-          }),
-        ])
+        try {
+          const now = new Date()
+          const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+          const [budgets, monthTxns] = await Promise.all([
+            db.query.budget.findMany({ where: and(eq(budget.businessId, activeBusiness.id), eq(budget.userId, userRecord.id)) }),
+            db.query.transaction.findMany({
+              where: and(eq(transaction.businessId, activeBusiness.id), eq(transaction.userId, userRecord.id), gte(transaction.createdAt, startMonth)),
+            }),
+          ])
 
-        if (budgets.length > 0) {
-          const spentByCategory: Record<string, number> = {}
-          monthTxns.filter(t => t.transaction_type === 'expense').forEach(t => {
-            const cat = t.categoryId || 'other'
-            spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
-          })
+          if (budgets.length > 0) {
+            const spentByCategory: Record<string, number> = {}
+            monthTxns.filter(t => t.transaction_type === 'expense').forEach(t => {
+              const cat = t.categoryId || 'other'
+              spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
+            })
 
-          const alerts: string[] = []
-          budgets.forEach(b => {
-            const spent = spentByCategory[b.category] || 0
-            const budgetAmt = parseFloat(b.amount)
-            const pct = (spent / budgetAmt) * 100
-            const label = CATEGORY_LABELS[b.category] || b.category
-            if (pct > 100) {
-              alerts.push(`🔴 Budget <b>${label}</b> melebihi batas! (${Math.round(pct)}% — Rp ${spent.toLocaleString('id-ID')} dari Rp ${budgetAmt.toLocaleString('id-ID')})`)
-            } else if (pct > 80) {
-              alerts.push(`🟡 Budget <b>${label}</b> hampir habis (${Math.round(pct)}% — sisa Rp ${(budgetAmt - spent).toLocaleString('id-ID')})`)
+            const alerts: string[] = []
+            budgets.forEach(b => {
+              const spent = spentByCategory[b.category] || 0
+              const budgetAmt = parseFloat(b.amount)
+              const pct = (spent / budgetAmt) * 100
+              const label = CATEGORY_LABELS[b.category] || b.category
+              if (pct > 100) {
+                alerts.push(`🔴 Budget <b>${label}</b> melebihi batas! (${Math.round(pct)}% — Rp ${spent.toLocaleString('id-ID')} dari Rp ${budgetAmt.toLocaleString('id-ID')})`)
+              } else if (pct > 80) {
+                alerts.push(`🟡 Budget <b>${label}</b> hampir habis (${Math.round(pct)}% — sisa Rp ${(budgetAmt - spent).toLocaleString('id-ID')})`)
+              }
+            })
+
+            if (alerts.length > 0) {
+              await sendTelegramMessage(chatId, `⚠️ <b>Peringatan Budget:</b>\n\n${alerts.join('\n')}`, 'HTML')
             }
-          })
-
-          if (alerts.length > 0) {
-            await sendTelegramMessage(chatId, `⚠️ <b>Peringatan Budget:</b>\n\n${alerts.join('\n')}`, 'HTML')
           }
+        } catch {
+          // Budget alert gagal — tidak perlu crash, transaksi sudah tersimpan
         }
       }
       return

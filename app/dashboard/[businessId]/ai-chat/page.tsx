@@ -63,6 +63,7 @@ export default async function AiChatPage({
           <AiChat
             chatId={chatId}
             businessId={businessId}
+            businessType={business.type}
             initialMessages={messages}
           />
         </div>

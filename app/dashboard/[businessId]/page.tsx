@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getBusiness } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
+import { getGoals, getBudgets } from '@/app/actions/goals'
 import { Button } from '@/components/ui/button'
 
 export const generateStaticParams = async () => []
@@ -44,8 +45,12 @@ export default async function BusinessDashboardPage({
   if (!session?.user) redirect('/sign-in')
 
   try {
-    const business = await getBusiness(businessId)
-    const transactions = await getBusinessTransactions(businessId)
+    const [business, transactions, goals, budgets] = await Promise.all([
+      getBusiness(businessId),
+      getBusinessTransactions(businessId),
+      getGoals(businessId).catch(() => []),
+      getBudgets(businessId).catch(() => []),
+    ])
 
     const totalExpenses = transactions
       .filter((t) => t.transaction_type === 'expense')
@@ -71,6 +76,25 @@ export default async function BusinessDashboardPage({
     }, {} as Record<string, number>)
 
     const recent = transactions.slice(0, 8)
+
+    // Goals & Budget summary
+    const activeGoals = goals.filter(g => !g.completed)
+    const now2 = new Date()
+    const startMonth = new Date(now2.getFullYear(), now2.getMonth(), 1)
+    const monthExpenseTxns = transactions.filter(t => {
+      const d = new Date(t.createdAt)
+      return t.transaction_type === 'expense' && d >= startMonth
+    })
+    const spentByCategory: Record<string, number> = {}
+    monthExpenseTxns.forEach(t => {
+      const cat = t.categoryId || 'other'
+      spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
+    })
+    const overBudget = budgets.filter(b => (spentByCategory[b.category] || 0) > parseFloat(b.amount))
+    const nearBudget = budgets.filter(b => {
+      const pct = (spentByCategory[b.category] || 0) / parseFloat(b.amount)
+      return pct > 0.8 && pct <= 1
+    })
 
     return (
       <div className="p-8">
@@ -198,6 +222,11 @@ export default async function BusinessDashboardPage({
                     <span>✦</span> Tanya AI
                   </Button>
                 </Link>
+                <Link href={`/dashboard/${businessId}/goals`} className="block">
+                  <Button variant="outline" className="w-full justify-start gap-3 h-10">
+                    <span>🎯</span> Goals & Budget
+                  </Button>
+                </Link>
                 <Link href={`/dashboard/${businessId}/reports`} className="block">
                   <Button variant="outline" className="w-full justify-start gap-3 h-10">
                     <span>📊</span> Lihat Laporan
@@ -210,6 +239,46 @@ export default async function BusinessDashboardPage({
                 </Link>
               </div>
             </div>
+
+            {/* Goals & Budget summary */}
+            {(activeGoals.length > 0 || overBudget.length > 0 || nearBudget.length > 0) && (
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-foreground">Goals & Budget</h3>
+                  <Link href={`/dashboard/${businessId}/goals`}>
+                    <Button variant="ghost" size="sm" className="text-xs h-7">Kelola →</Button>
+                  </Link>
+                </div>
+                <div className="space-y-2">
+                  {overBudget.map(b => (
+                    <div key={b.id} className="flex items-center gap-2 text-xs">
+                      <span>🔴</span>
+                      <span className="text-rose-600 font-medium">Budget {b.category} melebihi batas</span>
+                    </div>
+                  ))}
+                  {nearBudget.map(b => (
+                    <div key={b.id} className="flex items-center gap-2 text-xs">
+                      <span>🟡</span>
+                      <span className="text-amber-600 font-medium">Budget {b.category} hampir habis</span>
+                    </div>
+                  ))}
+                  {activeGoals.slice(0, 2).map(g => {
+                    const pct = Math.min(Math.round((parseFloat(g.currentAmount) / parseFloat(g.targetAmount)) * 100), 100)
+                    return (
+                      <div key={g.id}>
+                        <div className="flex justify-between text-xs mb-0.5">
+                          <span className="text-foreground truncate max-w-[140px]">🎯 {g.title}</span>
+                          <span className="text-muted-foreground shrink-0">{pct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Source breakdown */}
             {Object.keys(sourceCount).length > 0 && (
