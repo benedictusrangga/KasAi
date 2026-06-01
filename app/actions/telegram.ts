@@ -34,11 +34,30 @@ async function sendTelegramMessage(chatId: number, text: string, parseMode: 'HTM
   if (parseMode === 'HTML') {
     body.parse_mode = 'HTML'
   }
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      // Jika HTML parse error, coba kirim ulang sebagai plain text
+      if (parseMode === 'HTML' && errData?.description?.includes('parse')) {
+        const plainBody = { ...body, text: text.replace(/<[^>]*>/g, ''), parse_mode: undefined }
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(plainBody),
+        })
+      }
+    }
+  } catch {
+    // Network error — log tapi jangan crash handler
+    console.error('[Telegram] Failed to send message to chatId:', chatId)
+  }
 }
 
 async function findUserByTelegramId(telegramId: string) {

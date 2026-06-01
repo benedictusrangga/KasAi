@@ -78,8 +78,12 @@ export function AiChat({
     try {
       await createTransaction(businessId, expense.amount, expense.description, undefined, 'manual')
       setSavedIds((prev) => new Set([...prev, idx]))
-    } catch (error) {
-      console.error('Error creating transaction:', error)
+    } catch {
+      // Tampilkan pesan error di chat
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: '❌ Gagal menyimpan transaksi. Silakan coba lagi.' },
+      ])
     } finally {
       setCreatingTransaction(false)
     }
