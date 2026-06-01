@@ -211,14 +211,13 @@ export function SettingsPanel({ business, user, categories, products }: Props) {
             <div className="flex items-start gap-3">
               <span className="text-2xl">💬</span>
               <div>
-                <p className="font-semibold text-foreground text-sm mb-1">Hubungkan ke @Aiaccountingsbot</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Masukkan nomor HP yang sama dengan akun Telegram Anda. Bot{' '}
-                  <a href="https://t.me/Aiaccountingsbot" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">
-                    @Aiaccountingsbot
-                  </a>{' '}
-                  akan mengenali Anda secara otomatis dan langsung mencatat transaksi yang Anda kirim.
-                </p>
+                <p className="font-semibold text-foreground text-sm mb-2">Cara menghubungkan Telegram</p>
+                <ol className="text-xs text-muted-foreground leading-relaxed space-y-1 list-decimal list-inside">
+                  <li>Chat ke <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">@userinfobot</a> di Telegram → kirim pesan apa saja</li>
+                  <li>Copy angka <strong>Your user ID</strong> dari balasannya</li>
+                  <li>Paste di field <strong>Telegram ID</strong> di bawah → klik <strong>Simpan Profil</strong></li>
+                  <li>Baru chat ke <a href="https://t.me/Aiaccountingsbot" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">@Aiaccountingsbot</a> — bot langsung mengenali Anda</li>
+                </ol>
               </div>
             </div>
           </div>
@@ -243,16 +242,19 @@ export function SettingsPanel({ business, user, categories, products }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="telegram-id">Telegram ID (opsional)</Label>
+            <Label htmlFor="telegram-id">Telegram ID *</Label>
             <Input
               id="telegram-id"
-              placeholder="Contoh: 123456789"
+              placeholder="Contoh: 7123456789"
               value={profile.telegramId}
               onChange={(e) => setProfile({ ...profile, telegramId: e.target.value })}
               className="h-11"
             />
             <p className="text-xs text-muted-foreground">
-              Dapatkan ID Anda dengan chat ke @userinfobot di Telegram
+              Cara dapat ID: buka Telegram → chat ke{' '}
+              <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">@userinfobot</a>
+              {' '}→ kirim pesan apa saja → copy angka <strong>Your user ID</strong> → paste di sini → Simpan.
+              Setelah itu baru chat ke @Aiaccountingsbot.
             </p>
           </div>
 
