@@ -72,20 +72,25 @@ const TRANSACTION_CATEGORIES = [
   'other',
 ]
 
-const EXTRACTION_SYSTEM_PROMPT = `Kamu adalah asisten AI yang ahli mengekstrak informasi transaksi keuangan dari pesan teks dan gambar dalam bahasa Indonesia maupun Inggris.
+const EXTRACTION_SYSTEM_PROMPT = `Kamu adalah asisten AI yang ahli mengekstrak informasi transaksi keuangan dari pesan teks, struk, dan screenshot aplikasi perbankan Indonesia.
 
 Tugasmu:
-1. Identifikasi apakah pesan mendeskripsikan pengeluaran (expense) atau pemasukan (income)
+1. Identifikasi apakah ini pengeluaran (expense) atau pemasukan (income)
 2. Ekstrak jumlah, deskripsi, dan kategori
 3. Berikan confidence score
 
 Gunakan kategori berikut: ${TRANSACTION_CATEGORIES.join(', ')}.
 
-Aturan:
-- Jika teks mendeskripsikan uang masuk/diterima/penjualan → transactionType: "income"
-- Jika teks mendeskripsikan pengeluaran/pembelian/bayar → transactionType: "expense"
+Aturan penting:
+- Jika teks mendeskripsikan uang masuk/diterima/penjualan/transfer masuk → transactionType: "income"
+- Jika teks mendeskripsikan pengeluaran/pembelian/bayar/transfer keluar/m-transfer berhasil → transactionType: "expense"
 - Angka seperti "50rb", "50k", "50ribu" = 50000
 - Angka seperti "1.2jt", "1,2jt", "1.2 juta" = 1200000
+- Untuk screenshot transfer bank (BCA, Mandiri, BRI, BNI, dll): baca NOMINAL TRANSFER atau jumlah yang ditransfer
+- Untuk struk belanja: baca total pembayaran
+- Untuk screenshot m-banking/e-wallet: baca nominal transaksi
+- Jika ada kata "BERHASIL", "SUCCESS", "Transfer Berhasil" → ini adalah transaksi yang valid
+- Format nominal Indonesia: titik sebagai pemisah ribuan (750.000 = tujuh ratus lima puluh ribu)
 
 Balas HANYA dengan JSON array, tanpa teks lain.
 
@@ -168,7 +173,7 @@ export async function extractTransactionsFromText(
 }
 
 /**
- * Chat conversational dengan AI — memahami konteks bisnis user
+ * Chat conversational dengan AI — memahami konteks bisnis + data keuangan user
  */
 export async function chatWithAI(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
@@ -177,33 +182,47 @@ export async function chatWithAI(
     phoneNumber?: string
     businessType?: string
     businessName?: string
+    // Ringkasan keuangan — inject data real tapi hemat token
+    financialSummary?: {
+      totalIncome: number
+      totalExpense: number
+      netProfit: number
+      txCount: number
+      monthIncome: number
+      monthExpense: number
+      topExpenses: Array<{ desc: string; amount: number }>
+      recentTx: Array<{ type: string; desc: string; amount: number; date: string }>
+    }
   }
 ): Promise<string> {
-  const businessContext = context
-    ? [
-        `Tipe akun: ${context.accountType || 'personal'}.`,
-        context.businessName ? `Nama bisnis: ${context.businessName}.` : '',
-        context.businessType ? `Jenis bisnis: ${context.businessType}.` : '',
-      ]
-        .filter(Boolean)
-        .join(' ')
-    : ''
+  const fs = context?.financialSummary
 
-  const systemInstruction = `Kamu adalah asisten AI keuangan untuk aplikasi akuntansi UMKM Indonesia bernama KasAI.
+  // Bangun ringkasan keuangan yang ringkas (hemat token)
+  const financialContext = fs ? `
+DATA KEUANGAN BISNIS (gunakan ini untuk menjawab pertanyaan):
+- Total pemasukan: Rp ${fs.totalIncome.toLocaleString('id-ID')}
+- Total pengeluaran: Rp ${fs.totalExpense.toLocaleString('id-ID')}
+- Laba bersih: Rp ${fs.netProfit.toLocaleString('id-ID')}
+- Total transaksi: ${fs.txCount}
+- Bulan ini - pemasukan: Rp ${fs.monthIncome.toLocaleString('id-ID')}, pengeluaran: Rp ${fs.monthExpense.toLocaleString('id-ID')}
+${fs.topExpenses.length > 0 ? `- Pengeluaran terbesar: ${fs.topExpenses.map(e => `${e.desc} (Rp ${e.amount.toLocaleString('id-ID')})`).join(', ')}` : ''}
+${fs.recentTx.length > 0 ? `- 5 transaksi terakhir: ${fs.recentTx.map(t => `${t.type === 'income' ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')} (${t.desc}, ${t.date})`).join(' | ')}` : ''}` : ''
 
-Bantu pengguna untuk:
-- Memahami pengeluaran dan pemasukan mereka
-- Mendapatkan insight keuangan bisnis
-- Menjawab pertanyaan tentang keuangan
-- Memberikan saran budgeting dan efisiensi biaya
+  const systemInstruction = `Kamu adalah asisten AI keuangan KasAI untuk UMKM Indonesia.
+Bisnis: ${context?.businessName || '-'} (${context?.businessType || 'umum'})
+${financialContext}
+
+Tugasmu:
+- Jawab pertanyaan keuangan berdasarkan DATA DI ATAS
+- Bantu catat transaksi jika user menyebut nominal
+- Beri saran keuangan yang actionable
+- Jika ditanya "berapa pendapatan/pengeluaran/laba" → jawab dari data di atas
 
 Aturan:
-- Gunakan bahasa Indonesia yang ramah dan profesional
-- Gunakan format Rupiah (Rp) untuk mata uang
-- Jawaban singkat, padat, dan actionable
-- Jika ada pertanyaan di luar keuangan, arahkan kembali ke topik keuangan bisnis
-
-${businessContext}`
+- Bahasa Indonesia, ramah, singkat (maks 3 kalimat untuk jawaban sederhana)
+- Format Rupiah: Rp X.XXX.XXX
+- Jangan tanya balik jika data sudah tersedia
+- Jika data tidak ada (belum ada transaksi), bilang "belum ada data transaksi"`
 
   const contents = messages.map((msg) => ({
     role: msg.role === 'user' ? 'user' : 'model',
@@ -226,12 +245,15 @@ export async function extractTransactionsFromImage(
     accountType?: string
     businessType?: string
     businessName?: string
+    caption?: string
   }
 ): Promise<ExtractedTransaction[]> {
   try {
     const contextPrompt = buildContextPrompt(context)
+    const captionHint = context?.caption
+      ? `\nKeterangan dari pengirim: "${context.caption}". Gunakan ini sebagai petunjuk deskripsi transaksi.`
+      : ''
 
-    // Strip data URL prefix jika ada
     let base64Data = imageData
     let mimeType = 'image/jpeg'
     if (imageData.startsWith('data:')) {
@@ -252,7 +274,7 @@ export async function extractTransactionsFromImage(
                 inlineData: { mimeType, data: base64Data },
               },
               {
-                text: `${contextPrompt ? contextPrompt + '\n' : ''}Ekstrak semua transaksi dari struk atau invoice ini. Kembalikan hanya JSON array.`,
+                text: `${contextPrompt ? contextPrompt + '\n' : ''}${captionHint}Ekstrak semua transaksi dari gambar ini (bisa berupa struk, screenshot transfer bank, bukti pembayaran, atau nota). Kembalikan hanya JSON array.`,
               },
             ],
           },

@@ -227,25 +227,30 @@ export async function handleTelegramUpdate(update: any) {
       accountType: userRecord.accountType || undefined,
       businessType: activeBusiness.type,
       businessName: activeBusiness.name,
+      caption: caption || undefined,
     })
 
     if (extracted.length > 0) {
+      // Jika ada caption, gunakan sebagai deskripsi override untuk transaksi pertama
       const created = []
-      for (const item of extracted) {
+      for (let i = 0; i < extracted.length; i++) {
+        const item = extracted[i]
         const id = nanoid()
+        // Gunakan caption sebagai deskripsi jika ada dan ini transaksi pertama
+        const description = (i === 0 && caption) ? caption : item.description
         await db.insert(transaction).values({
           id,
           businessId: activeBusiness.id,
           userId: userRecord.id,
           amount: item.amount.toString(),
           transaction_type: item.transactionType,
-          description: item.description,
+          description,
           categoryId: null,
           source: 'receipt_image',
           createdAt: new Date(),
           updatedAt: new Date(),
         })
-        created.push(item)
+        created.push({ ...item, description })
       }
 
       const summary = created
@@ -259,36 +264,50 @@ export async function handleTelegramUpdate(update: any) {
         `✅ Struk berhasil dibaca untuk <b>${escapeHtml(activeBusiness.name)}</b>:\n\n${summary}`,
         'HTML'
       )
-    } else {
-      // Jika tidak ada transaksi terdeteksi, coba pakai caption sebagai konteks
-      if (caption) {
-        const extractedFromCaption = await extractTransactionsFromText(caption, {
-          accountType: userRecord.accountType || undefined,
-          businessType: activeBusiness.type,
-          businessName: activeBusiness.name,
-        })
-        if (extractedFromCaption.length > 0) {
-          for (const item of extractedFromCaption) {
-            await db.insert(transaction).values({
-              id: nanoid(),
-              businessId: activeBusiness.id,
-              userId: userRecord.id,
-              amount: item.amount.toString(),
-              transaction_type: item.transactionType,
-              description: item.description,
-              categoryId: null,
-              source: 'receipt_image',
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-          }
-          await sendTelegramMessage(chatId, `✅ Transaksi dari caption dicatat: ${caption}`)
-          return
+    } else if (caption) {
+      // Gemini tidak bisa baca foto, tapi ada caption — coba ekstrak dari caption
+      const extractedFromCaption = await extractTransactionsFromText(caption, {
+        accountType: userRecord.accountType || undefined,
+        businessType: activeBusiness.type,
+        businessName: activeBusiness.name,
+      })
+      if (extractedFromCaption.length > 0) {
+        for (const item of extractedFromCaption) {
+          await db.insert(transaction).values({
+            id: nanoid(),
+            businessId: activeBusiness.id,
+            userId: userRecord.id,
+            amount: item.amount.toString(),
+            transaction_type: item.transactionType,
+            description: item.description,
+            categoryId: null,
+            source: 'receipt_image',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
         }
+        const summary = extractedFromCaption
+          .map((item) =>
+            `${item.transactionType === 'income' ? '📈 Pemasukan' : '📉 Pengeluaran'}: <b>Rp ${Number(item.amount).toLocaleString('id-ID')}</b>\n   ${escapeHtml(item.description)}`
+          )
+          .join('\n')
+        await sendTelegramMessage(
+          chatId,
+          `✅ Transaksi dicatat dari keterangan foto:\n\n${summary}`,
+          'HTML'
+        )
+      } else {
+        // Caption ada tapi tidak ada nominal — minta user ketik nominal
+        await sendTelegramMessage(
+          chatId,
+          `⚠️ Foto diterima dengan keterangan "<b>${escapeHtml(caption)}</b>" tapi nominal tidak terdeteksi.\n\nCoba ketik: <i>"${escapeHtml(caption)} [nominal]"</i>\nContoh: <i>"${escapeHtml(caption)} 750000"</i>`,
+          'HTML'
+        )
       }
+    } else {
       await sendTelegramMessage(
         chatId,
-        '⚠️ Tidak ada transaksi yang terdeteksi dari foto ini.\n\nCoba kirim foto yang lebih jelas, atau ketik transaksinya sebagai teks.'
+        '⚠️ Tidak ada transaksi yang terdeteksi dari foto ini.\n\nTips:\n• Tambahkan keterangan saat kirim foto (contoh: "Bayar kos 750rb")\n• Atau ketik transaksinya sebagai teks'
       )
     }
     return
@@ -342,8 +361,40 @@ export async function handleTelegramUpdate(update: any) {
       return
     }
 
-    // Fallback ke AI chat
+    // Fallback ke AI chat — inject data keuangan real
     try {
+      // Ambil ringkasan keuangan (hemat token: hanya agregat, bukan semua transaksi)
+      const allTxns = await db.query.transaction.findMany({
+        where: eq(transaction.businessId, activeBusiness.id),
+        orderBy: (t, { desc }) => [desc(t.createdAt)],
+      })
+
+      const now = new Date()
+      const thisMonth = allTxns.filter((t) => {
+        const d = new Date(t.createdAt)
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      })
+
+      const totalIncome = allTxns.filter((t) => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
+      const totalExpense = allTxns.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
+      const monthIncome = thisMonth.filter((t) => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
+      const monthExpense = thisMonth.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
+
+      // Top 3 pengeluaran terbesar
+      const topExpenses = allTxns
+        .filter((t) => t.transaction_type === 'expense')
+        .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+        .slice(0, 3)
+        .map((t) => ({ desc: t.description, amount: parseFloat(t.amount) }))
+
+      // 5 transaksi terakhir
+      const recentTx = allTxns.slice(0, 5).map((t) => ({
+        type: t.transaction_type,
+        desc: t.description,
+        amount: parseFloat(t.amount),
+        date: new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+      }))
+
       const aiResponse = await chatWithAI(
         [{ role: 'user', content: text }],
         {
@@ -351,6 +402,16 @@ export async function handleTelegramUpdate(update: any) {
           phoneNumber: userRecord.phoneNumber || undefined,
           businessType: activeBusiness.type,
           businessName: activeBusiness.name,
+          financialSummary: {
+            totalIncome,
+            totalExpense,
+            netProfit: totalIncome - totalExpense,
+            txCount: allTxns.length,
+            monthIncome,
+            monthExpense,
+            topExpenses,
+            recentTx,
+          },
         }
       )
       await sendTelegramMessage(chatId, aiResponse || 'Maaf, saya tidak dapat memproses pesan ini.')
