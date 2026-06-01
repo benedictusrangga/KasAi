@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth'
 import { pool } from '@/lib/db'
 
 // URL production yang stabil
-const PRODUCTION_URL = 'https://v0-ai-accounting-mvp.vercel.app'
+const PRODUCTION_URL = 'https://ai-accounting-mvp.vercel.app'
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
