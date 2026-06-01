@@ -19,7 +19,7 @@ export function LandingFeatures() {
         </svg>
       ),
       title: 'Catat Transaksi via Telegram',
-      desc: 'Kirim pesan seperti "beli gula 50rb" atau "terima bayaran 1.2jt" — AI langsung mencatat, mengkategorikan, dan mengkonfirmasi. Tidak perlu buka aplikasi sama sekali.',
+      desc: 'Kirim pesan seperti "beli gula 50rb" atau "terima bayaran 1.2jt" — AI langsung mencatat, mengkategorikan, dan mengkonfirmasi. Semua tercatat langsung dari Telegram.',
       tags: ['Bahasa natural Indonesia', 'Konfirmasi instan', 'Pemasukan & pengeluaran', 'Foto struk otomatis'],
     },
     {

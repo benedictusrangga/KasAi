@@ -43,14 +43,14 @@ export function LandingTelegram() {
 
             <h2 className="text-4xl sm:text-5xl font-bold leading-[1.1] tracking-tight mb-6"
               style={{ color: isDark ? '#ffffff' : '#0a0a0a' }}>
-              Catat transaksi tanpa
+              Catat transaksi
               <br />
               <span style={{
                 backgroundImage: `linear-gradient(90deg, ${TG_BLUE}, ${TG_DARK})`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
-              }}>buka aplikasi.</span>
+              }}>langsung dari Telegram.</span>
             </h2>
 
             <p className="text-lg leading-relaxed mb-10"

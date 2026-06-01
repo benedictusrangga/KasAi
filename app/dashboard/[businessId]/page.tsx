@@ -364,7 +364,7 @@ export default async function BusinessDashboardPage({
                     <a href="https://t.me/Aiaccountingsbot" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">
                       @Aiaccountingsbot
                     </a>{' '}
-                    — transaksi langsung tercatat tanpa buka aplikasi.
+                    — transaksi langsung tercatat dari Telegram.
                   </p>
                   <Link href={`/dashboard/${businessId}/settings`}>
                     <Button variant="link" size="sm" className="px-0 h-auto mt-2 text-xs text-primary">
