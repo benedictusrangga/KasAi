@@ -15,7 +15,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
 
   const isSignUp = mode === 'sign-up'
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
@@ -139,9 +139,9 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
         {/* Stats */}
         <div className="relative flex gap-8">
           {[
-            { value: '2.400+', label: 'UMKM Aktif' },
-            { value: '18rb+', label: 'Transaksi/Hari' },
-            { value: '3 jam', label: 'Hemat/Hari' },
+            { value: 'Beta', label: 'Early Access' },
+            { value: 'Gratis', label: 'Mulai Sekarang' },
+            { value: '2 menit', label: 'Setup Awal' },
           ].map((s) => (
             <div key={s.label}>
               <p className="text-xl font-bold text-white">{s.value}</p>

@@ -23,13 +23,13 @@ export default function PersonalSetupPage() {
     authClient.getSession().then(({ data }) => {
       if (!data?.session) router.replace('/sign-in')
       else {
-        setFormData((prev) => ({ ...prev, name: data.session.user?.name || '' }))
+        setFormData((prev) => ({ ...prev, name: data.user?.name || '' }))
         setChecking(false)
       }
     })
   }, [router])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!formData.name.trim()) { setError('Nama diperlukan.'); return }
     setIsLoading(true)

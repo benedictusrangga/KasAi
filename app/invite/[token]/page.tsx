@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { acceptInvite } from '@/app/actions/members'
 import { useSession } from '@/lib/auth-client'
+import Link from 'next/link'
 
 export default function AcceptInvitePage({ params }: { params: { token: string } }) {
   const router = useRouter()
@@ -34,10 +35,10 @@ export default function AcceptInvitePage({ params }: { params: { token: string }
 
   if (isPending || status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Memproses undangan...</p>
+          <div className="text-4xl mb-4">⏳</div>
+          <p className="text-muted-foreground text-sm">Memproses undangan...</p>
         </div>
       </div>
     )
@@ -45,27 +46,27 @@ export default function AcceptInvitePage({ params }: { params: { token: string }
 
   if (status === 'unauthenticated') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full mx-4 text-center">
-          <div className="text-4xl mb-4">🔐</div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Login Diperlukan</h1>
-          <p className="text-gray-600 mb-6">
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="rounded-2xl border border-border bg-card p-8 max-w-md w-full text-center shadow-lg">
+          <div className="text-5xl mb-4">🔐</div>
+          <h1 className="text-xl font-bold text-foreground mb-2">Login Diperlukan</h1>
+          <p className="text-muted-foreground text-sm mb-6">
             Anda perlu login terlebih dahulu untuk menerima undangan ini.
           </p>
-          <button
-            onClick={() => router.push(`/sign-in?redirect=/invite/${params.token}`)}
-            className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+          <Link
+            href={`/sign-in?redirect=/invite/${params.token}`}
+            className="block w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold hover:bg-primary/90 transition-colors text-center"
           >
             Login Sekarang
-          </button>
-          <p className="text-sm text-gray-500 mt-3">
+          </Link>
+          <p className="text-sm text-muted-foreground mt-4">
             Belum punya akun?{' '}
-            <button
-              onClick={() => router.push(`/sign-up?redirect=/invite/${params.token}`)}
-              className="text-blue-600 hover:underline"
+            <Link
+              href={`/sign-up?redirect=/invite/${params.token}`}
+              className="text-primary font-medium hover:underline"
             >
               Daftar gratis
-            </button>
+            </Link>
           </p>
         </div>
       </div>
@@ -74,28 +75,35 @@ export default function AcceptInvitePage({ params }: { params: { token: string }
 
   if (status === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full mx-4 text-center">
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="rounded-2xl border border-border bg-card p-8 max-w-md w-full text-center shadow-lg">
           <div className="text-5xl mb-4">🎉</div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Undangan Diterima!</h1>
-          <p className="text-gray-600">Anda berhasil bergabung ke bisnis. Mengarahkan ke dashboard...</p>
+          <h1 className="text-xl font-bold text-foreground mb-2">Undangan Diterima!</h1>
+          <p className="text-muted-foreground text-sm">
+            Anda berhasil bergabung ke bisnis. Mengarahkan ke dashboard...
+          </p>
+          <div className="mt-4 flex justify-center">
+            <div className="h-1.5 w-24 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '60%' }} />
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full mx-4 text-center">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <div className="rounded-2xl border border-border bg-card p-8 max-w-md w-full text-center shadow-lg">
         <div className="text-5xl mb-4">❌</div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">Undangan Tidak Valid</h1>
-        <p className="text-gray-600 mb-6">{message}</p>
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+        <h1 className="text-xl font-bold text-foreground mb-2">Undangan Tidak Valid</h1>
+        <p className="text-muted-foreground text-sm mb-6">{message || 'Link undangan sudah kadaluarsa atau tidak ditemukan.'}</p>
+        <Link
+          href="/dashboard"
+          className="block w-full rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold hover:bg-primary/90 transition-colors text-center"
         >
           Ke Dashboard
-        </button>
+        </Link>
       </div>
     </div>
   )

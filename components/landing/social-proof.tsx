@@ -18,8 +18,8 @@ export function LandingSocialProof() {
   ]
 
   const stats = [
-    { value: '10.000+', label: 'Transaksi Dicatat' },
-    { value: '500+',    label: 'Pemilik Bisnis' },
+    { value: 'Beta',    label: 'Early Access' },
+    { value: 'Gratis',  label: 'Mulai Sekarang' },
     { value: '99.9%',   label: 'Uptime' },
     { value: '< 2 dtk', label: 'Respons AI' },
   ]

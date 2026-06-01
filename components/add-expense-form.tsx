@@ -211,7 +211,7 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
 

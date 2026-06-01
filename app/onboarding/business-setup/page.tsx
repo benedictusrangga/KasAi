@@ -54,7 +54,7 @@ export default function BusinessSetupPage() {
     setStep(2)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!formData.businessName.trim()) { setError('Nama bisnis diperlukan.'); return }
     setIsLoading(true)

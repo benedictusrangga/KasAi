@@ -6,6 +6,7 @@ import { getBusiness } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
 import { getGoals, getBudgets } from '@/app/actions/goals'
 import { Button } from '@/components/ui/button'
+import { DashboardCharts } from '@/components/dashboard-charts'
 
 export const generateStaticParams = async () => []
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,14 @@ export const metadata = { title: 'Dashboard Bisnis — KasAI' }
 
 const SOURCE_LABELS: Record<string, string> = { manual: 'Manual', telegram: 'Telegram', voice_note: 'Suara', receipt_image: 'Struk', api: 'API' }
 const SOURCE_ICONS: Record<string, string>  = { manual: '✍️', telegram: '💬', voice_note: '🎙️', receipt_image: '📷', api: '🔌' }
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+const CATEGORY_LABELS: Record<string, string> = {
+  groceries: 'Bahan Makanan', transportation: 'Transportasi', utilities: 'Utilitas',
+  entertainment: 'Hiburan', dining: 'Makan & Minum', shopping: 'Belanja',
+  healthcare: 'Kesehatan', education: 'Pendidikan', office_supplies: 'Perlengkapan Kantor',
+  other: 'Lainnya', sales: 'Penjualan', service: 'Jasa', investment: 'Investasi',
+}
 
 export default async function BusinessDashboardPage({
   params,
@@ -63,8 +72,7 @@ export default async function BusinessDashboardPage({
 
     // Goals & Budget summary
     const activeGoals = goals.filter(g => !g.completed)
-    const now2 = new Date()
-    const startMonth = new Date(now2.getFullYear(), now2.getMonth(), 1)
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthExpenseTxns = transactions.filter(t => {
       const d = new Date(t.createdAt)
       return t.transaction_type === 'expense' && d >= startMonth
@@ -80,8 +88,45 @@ export default async function BusinessDashboardPage({
       return pct > 0.8 && pct <= 1
     })
 
+    // ── Chart data ─────────────────────────────────────────────────────────────
+
+    // Monthly bar chart — 6 bulan terakhir
+    const monthlyMap: Record<string, { income: number; expense: number }> = {}
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      monthlyMap[key] = { income: 0, expense: 0 }
+    }
+    transactions.forEach((t) => {
+      const d = new Date(t.createdAt)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (monthlyMap[key]) {
+        if (t.transaction_type === 'income') monthlyMap[key].income += parseFloat(t.amount)
+        else monthlyMap[key].expense += parseFloat(t.amount)
+      }
+    })
+    const monthlyChartData = Object.entries(monthlyMap).map(([key, val]) => {
+      const [, month] = key.split('-')
+      return { month: MONTH_NAMES[parseInt(month) - 1], income: val.income, expense: val.expense }
+    })
+
+    // Category pie chart — pengeluaran per kategori
+    const categoryMap: Record<string, number> = {}
+    transactions.filter(t => t.transaction_type === 'expense').forEach(t => {
+      const cat = t.categoryId || 'other'
+      categoryMap[cat] = (categoryMap[cat] || 0) + parseFloat(t.amount)
+    })
+    const categoryChartData = Object.entries(categoryMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 6)
+      .map(([cat, value]) => ({
+        name: CATEGORY_LABELS[cat] || cat,
+        value,
+        percentage: totalExpenses > 0 ? Math.round((value / totalExpenses) * 100) : 0,
+      }))
+
     return (
-      <div className="p-8">
+      <div className="p-6 lg:p-8">
         {/* Header */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -143,7 +188,14 @@ export default async function BusinessDashboardPage({
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        {/* Charts row */}
+        <DashboardCharts
+          monthlyData={monthlyChartData}
+          categoryData={categoryChartData}
+          businessId={businessId}
+        />
+
+        <div className="grid lg:grid-cols-3 gap-6 mt-6">
           {/* Recent Transactions */}
           <div className="lg:col-span-2 rounded-2xl border border-border bg-card overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -154,10 +206,19 @@ export default async function BusinessDashboardPage({
             </div>
             {recent.length === 0 ? (
               <div className="p-12 text-center">
-                <p className="text-muted-foreground mb-4">Belum ada transaksi.</p>
-                <Link href={`/dashboard/${businessId}/add-expense`}>
-                  <Button size="sm">Tambah Transaksi Pertama</Button>
-                </Link>
+                <div className="text-4xl mb-3">📭</div>
+                <p className="text-muted-foreground mb-2 font-medium">Belum ada transaksi</p>
+                <p className="text-sm text-muted-foreground mb-5">
+                  Mulai catat pemasukan atau pengeluaran bisnis Anda.
+                </p>
+                <div className="flex gap-2 justify-center flex-wrap">
+                  <Link href={`/dashboard/${businessId}/add-expense`}>
+                    <Button size="sm">+ Tambah Manual</Button>
+                  </Link>
+                  <Link href={`/dashboard/${businessId}/ai-chat`}>
+                    <Button size="sm" variant="outline">✦ Catat via AI</Button>
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="divide-y divide-border">

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getBusiness } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
 import { PdfExport } from '@/components/pdf-export'
+import { ReportsCharts } from '@/components/reports-charts'
 
 export const metadata = { title: 'Laporan Keuangan — KasAI' }
 export const dynamic = 'force-dynamic'
@@ -63,7 +64,6 @@ export default async function ReportsPage({ params }: { params: Promise<{ busine
     })
 
     const monthlyEntries = Object.entries(monthlyData)
-    const maxMonthlyVal = Math.max(...monthlyEntries.flatMap(([, v]) => [v.income, v.expense]), 1)
 
     // Category breakdown
     const categoryData: Record<string, number> = {}
@@ -111,87 +111,17 @@ export default async function ReportsPage({ params }: { params: Promise<{ busine
 
         <div className="grid lg:grid-cols-2 gap-6 mb-6">
           {/* Monthly chart */}
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-semibold text-foreground mb-1">Tren 6 Bulan Terakhir</h2>
-            <p className="text-xs text-muted-foreground mb-6">Pemasukan vs Pengeluaran per bulan</p>
-            <div className="space-y-4">
-              {monthlyEntries.map(([key, val]) => {
-                const [year, month] = key.split('-')
-                const label = `${MONTH_NAMES[parseInt(month) - 1]} ${year}`
-                return (
-                  <div key={key}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-muted-foreground">{label}</span>
-                      <span className={`text-xs font-medium ${(val.income - val.expense) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {(val.income - val.expense) >= 0 ? '+' : ''}Rp {(val.income - val.expense).toLocaleString('id-ID')}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-emerald-600 w-16 text-right">Rp {(val.income / 1000).toFixed(0)}k</span>
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-emerald-500 rounded-full transition-all"
-                            style={{ width: `${(val.income / maxMonthlyVal) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-rose-500 w-16 text-right">Rp {(val.expense / 1000).toFixed(0)}k</span>
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-rose-400 rounded-full transition-all"
-                            style={{ width: `${(val.expense / maxMonthlyVal) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="flex gap-4 mt-4 pt-4 border-t border-border">
-              <div className="flex items-center gap-1.5">
-                <div className="h-2 w-4 rounded-full bg-emerald-500" />
-                <span className="text-xs text-muted-foreground">Pemasukan</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="h-2 w-4 rounded-full bg-rose-400" />
-                <span className="text-xs text-muted-foreground">Pengeluaran</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Category breakdown */}
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-semibold text-foreground mb-1">Kategori Pengeluaran</h2>
-            <p className="text-xs text-muted-foreground mb-6">Top kategori berdasarkan jumlah</p>
-            {topCategories.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Belum ada data kategori.</p>
-            ) : (
-              <div className="space-y-4">
-                {topCategories.map(([cat, amount]) => (
-                  <div key={cat}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-foreground capitalize">{cat}</span>
-                      <span className="text-sm font-medium text-foreground">
-                        Rp {amount.toLocaleString('id-ID')}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full transition-all"
-                        style={{ width: `${totalExpense > 0 ? (amount / totalExpense) * 100 : 0}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {totalExpense > 0 ? ((amount / totalExpense) * 100).toFixed(1) : 0}% dari total pengeluaran
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ReportsCharts
+            monthlyData={monthlyEntries.map(([key, val]) => {
+              const [, month] = key.split('-')
+              return { month: MONTH_NAMES[parseInt(month) - 1], income: val.income, expense: val.expense }
+            })}
+            categoryData={topCategories.map(([cat, amount]) => ({
+              name: cat,
+              value: amount,
+              percentage: totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0,
+            }))}
+          />
         </div>
 
         {/* Source breakdown */}
