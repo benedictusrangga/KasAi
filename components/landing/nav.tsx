@@ -67,45 +67,38 @@ export function LandingNav() {
     const ids = NAV_LINKS.map((l) => l.href.slice(1))
 
     const getActiveId = () => {
-      const scrollY = window.scrollY
-      const viewportH = window.innerHeight
-      // Cari section yang paling dekat ke 40% dari atas viewport
-      const target = scrollY + viewportH * 0.4
+      // Ambil posisi semua section
+      const sections = ids
+        .map((id) => {
+          const el = document.getElementById(id)
+          if (!el) return null
+          return { id, top: el.getBoundingClientRect().top }
+        })
+        .filter(Boolean) as { id: string; top: number }[]
 
-      let closest = ''
-      let closestDist = Infinity
+      if (sections.length === 0) return
 
-      ids.forEach((id) => {
-        const el = document.getElementById(id)
-        if (!el) return
-        const rect = el.getBoundingClientRect()
-        const elTop = rect.top + scrollY
-        const dist = Math.abs(elTop - target)
-        if (dist < closestDist) {
-          closestDist = dist
-          closest = id
-        }
-      })
+      // Section aktif = yang top-nya paling dekat ke 0 (atau sudah lewat atas) tapi belum terlalu jauh ke bawah
+      // Ambil section terakhir yang top-nya <= 30% viewport height
+      const threshold = window.innerHeight * 0.3
+      let active = sections[0].id
 
-      // Hanya aktifkan jika section sudah masuk viewport (tidak terlalu jauh di bawah)
-      if (closest) {
-        const el = document.getElementById(closest)
-        if (el) {
-          const rect = el.getBoundingClientRect()
-          // Section harus sudah mulai masuk dari atas, atau belum lewat dari bawah
-          if (rect.top < viewportH * 0.75 && rect.bottom > viewportH * 0.1) {
-            setActiveHash('#' + closest)
-            return
-          }
+      for (const s of sections) {
+        if (s.top <= threshold) {
+          active = s.id
         }
       }
+
+      setActiveHash('#' + active)
     }
 
-    const onScroll = () => { getActiveId() }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    // Jalankan sekali saat mount
-    getActiveId()
-    return () => window.removeEventListener('scroll', onScroll)
+    window.addEventListener('scroll', getActiveId, { passive: true })
+    // Delay sedikit agar DOM sudah render sempurna
+    const timer = setTimeout(getActiveId, 100)
+    return () => {
+      window.removeEventListener('scroll', getActiveId)
+      clearTimeout(timer)
+    }
   }, [])
 
   useEffect(() => {
