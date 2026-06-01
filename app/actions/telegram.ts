@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { business, transaction, user } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { extractTransactionsFromText, chatWithAI } from '@/lib/gemini'
+import { extractTransactionsFromText, extractTransactionsFromImage, chatWithAI } from '@/lib/gemini'
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 
@@ -45,6 +45,30 @@ async function findUserByPhoneNumber(phoneNumber: string) {
   return db.query.user.findFirst({
     where: eq(user.phoneNumber, phoneNumber),
   })
+}
+
+async function getTelegramFileBase64(fileId: string): Promise<{ base64: string; mimeType: string } | null> {
+  if (!TELEGRAM_BOT_TOKEN) return null
+  try {
+    // Get file path
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`)
+    const data = await res.json()
+    if (!data.ok) return null
+    const filePath = data.result.file_path
+
+    // Download file
+    const fileRes = await fetch(`https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`)
+    const buffer = await fileRes.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString('base64')
+
+    // Determine mime type from extension
+    const ext = filePath.split('.').pop()?.toLowerCase()
+    const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+
+    return { base64, mimeType }
+  } catch {
+    return null
+  }
 }
 
 export async function handleTelegramUpdate(update: any) {
@@ -183,6 +207,92 @@ export async function handleTelegramUpdate(update: any) {
   }
 
   const activeBusiness = businesses[0]
+
+  // ── Handle foto / struk ────────────────────────────────────────────────────
+  if (message.photo && Array.isArray(message.photo) && message.photo.length > 0) {
+    await sendTelegramMessage(chatId, '📷 Memproses foto struk...')
+
+    // Ambil foto resolusi tertinggi (index terakhir)
+    const photo = message.photo[message.photo.length - 1]
+    const caption = message.caption || ''
+
+    const fileData = await getTelegramFileBase64(photo.file_id)
+    if (!fileData) {
+      await sendTelegramMessage(chatId, '❌ Gagal mengunduh foto. Silakan coba lagi.')
+      return
+    }
+
+    const imageDataUrl = `data:${fileData.mimeType};base64,${fileData.base64}`
+    const extracted = await extractTransactionsFromImage(imageDataUrl, {
+      accountType: userRecord.accountType || undefined,
+      businessType: activeBusiness.type,
+      businessName: activeBusiness.name,
+    })
+
+    if (extracted.length > 0) {
+      const created = []
+      for (const item of extracted) {
+        const id = nanoid()
+        await db.insert(transaction).values({
+          id,
+          businessId: activeBusiness.id,
+          userId: userRecord.id,
+          amount: item.amount.toString(),
+          transaction_type: item.transactionType,
+          description: item.description,
+          categoryId: null,
+          source: 'receipt_image',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        created.push(item)
+      }
+
+      const summary = created
+        .map((item) =>
+          `${item.transactionType === 'income' ? '📈 Pemasukan' : '📉 Pengeluaran'}: <b>Rp ${Number(item.amount).toLocaleString('id-ID')}</b>\n   ${escapeHtml(item.description)}`
+        )
+        .join('\n')
+
+      await sendTelegramMessage(
+        chatId,
+        `✅ Struk berhasil dibaca untuk <b>${escapeHtml(activeBusiness.name)}</b>:\n\n${summary}`,
+        'HTML'
+      )
+    } else {
+      // Jika tidak ada transaksi terdeteksi, coba pakai caption sebagai konteks
+      if (caption) {
+        const extractedFromCaption = await extractTransactionsFromText(caption, {
+          accountType: userRecord.accountType || undefined,
+          businessType: activeBusiness.type,
+          businessName: activeBusiness.name,
+        })
+        if (extractedFromCaption.length > 0) {
+          for (const item of extractedFromCaption) {
+            await db.insert(transaction).values({
+              id: nanoid(),
+              businessId: activeBusiness.id,
+              userId: userRecord.id,
+              amount: item.amount.toString(),
+              transaction_type: item.transactionType,
+              description: item.description,
+              categoryId: null,
+              source: 'receipt_image',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+          }
+          await sendTelegramMessage(chatId, `✅ Transaksi dari caption dicatat: ${caption}`)
+          return
+        }
+      }
+      await sendTelegramMessage(
+        chatId,
+        '⚠️ Tidak ada transaksi yang terdeteksi dari foto ini.\n\nCoba kirim foto yang lebih jelas, atau ketik transaksinya sebagai teks.'
+      )
+    }
+    return
+  }
 
   if (typeof message.text === 'string') {
     const text = message.text.trim()
