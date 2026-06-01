@@ -23,6 +23,7 @@ import {
   updateUserProfile,
 } from '@/app/actions/business'
 import { PLANS, PLAN_GROUPS, getPlan, type PlanId } from '@/lib/plan-limits'
+import { PERSONA_LIST, getPersona, type PersonaId } from '@/lib/ai-personas'
 
 const CATEGORY_TYPES = [
   { value: 'groceries', label: 'Bahan Makanan' },
@@ -47,11 +48,12 @@ const BUSINESS_TYPES = [
 ]
 
 const TABS = [
-  { id: 'profile', label: '👤 Profil & Telegram' },
-  { id: 'business', label: '🏪 Info Bisnis' },
-  { id: 'categories', label: '🏷️ Kategori' },
-  { id: 'products', label: '📦 Produk & Layanan' },
-  { id: 'plan', label: '🚀 Plan & Upgrade' },
+  { id: 'profile',   label: '👤 Profil & Telegram' },
+  { id: 'ai',        label: '✦ AI Persona' },
+  { id: 'business',  label: '🏪 Info Bisnis' },
+  { id: 'categories',label: '🏷️ Kategori' },
+  { id: 'products',  label: '📦 Produk & Layanan' },
+  { id: 'plan',      label: '🚀 Plan & Upgrade' },
 ]
 
 type Props = {
@@ -65,6 +67,7 @@ type Props = {
     telegramId?: string | null
     plan?: string | null
     planExpiresAt?: Date | null
+    aiPersona?: string | null
   }
   categories: Array<{ id: string; name: string; type: string; description?: string | null }>
   products: Array<{ id: string; name: string; unit?: string | null; price?: string | null; description?: string | null }>
@@ -84,6 +87,7 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
     currency: user.currency || 'IDR',
     timezone: user.timezone || 'Asia/Jakarta',
     telegramId: user.telegramId || '',
+    aiPersona: (user.aiPersona || 'professional') as PersonaId,
   })
 
   const [bizInfo, setBizInfo] = useState({
@@ -295,6 +299,101 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
 
           <Button onClick={handleSaveProfile} disabled={isSaving} className="h-11">
             {isSaving ? 'Menyimpan...' : 'Simpan Profil'}
+          </Button>
+        </div>
+      )}
+
+      {/* AI Persona tab */}
+      {activeTab === 'ai' && (
+        <div className="max-w-2xl space-y-5">
+          <div className="rounded-2xl border border-border bg-card p-5 mb-2">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">✦</span>
+              <div>
+                <p className="font-semibold text-foreground text-sm mb-1">Apa itu AI Persona?</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Pilih kepribadian AI yang paling cocok dengan gaya belajar dan motivasi Anda.
+                  Persona berlaku di AI Chat dashboard maupun bot Telegram.
+                  Anda bisa ganti kapan saja.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            {PERSONA_LIST.map((persona) => {
+              const isSelected = profile.aiPersona === persona.id
+              return (
+                <button
+                  key={persona.id}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, aiPersona: persona.id })}
+                  className={`relative text-left rounded-2xl border-2 p-5 transition-all duration-200 hover:-translate-y-0.5 ${
+                    isSelected
+                      ? `${persona.borderColor} ${persona.bgColor}`
+                      : 'border-border bg-card hover:border-border/80'
+                  }`}
+                >
+                  {/* Selected badge */}
+                  {isSelected && (
+                    <span className={`absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${persona.color} bg-current/10`}
+                      style={{ background: 'currentColor', opacity: 1 }}>
+                      <span className="relative" style={{ mixBlendMode: 'normal' }}>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${persona.borderColor} ${persona.color}`}>
+                          Aktif
+                        </span>
+                      </span>
+                    </span>
+                  )}
+
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-2xl">{persona.emoji}</span>
+                    <div>
+                      <p className={`font-bold text-sm ${isSelected ? persona.color : 'text-foreground'}`}>
+                        {persona.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{persona.tagline}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                    {persona.description}
+                  </p>
+
+                  {/* Preview bubble */}
+                  <div className={`rounded-xl p-3 text-xs leading-relaxed ${
+                    isSelected ? `${persona.bgColor} ${persona.borderColor} border` : 'bg-muted/50 border border-border'
+                  }`}>
+                    <p className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider">Contoh respons:</p>
+                    <p className={`${isSelected ? persona.color : 'text-muted-foreground'}`}>
+                      {persona.id === 'professional' && '"Pengeluaran bulan ini Rp 2,3 juta, naik 18% dari bulan lalu. Kategori tertinggi: transportasi (Rp 450.000). Rekomendasi: tinjau ulang anggaran transportasi."'}
+                      {persona.id === 'sahabat' && '"Hei, kamu sudah berusaha keras bulan ini! 🌸 Pengeluaran naik sedikit, tapi tenang — kita cari cara bareng supaya bulan depan lebih hemat ya!"'}
+                      {persona.id === 'coach' && '"Pengeluaran naik 18%. Ini tidak bisa dibiarkan. Mulai besok, potong transportasi 30% dan PATUHI itu. Kamu bisa lebih baik dari ini."'}
+                      {persona.id === 'santai' && '"Wkwk bro, pengeluaran bulan ini lumayan juga 😅 Tapi santai, masih bisa dibenerin kok! Mau gue kasih tips hemat yang ga bikin sengsara?"'}
+                    </p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          <Button
+            onClick={async () => {
+              setIsSaving(true)
+              try {
+                await updateUserProfile({ aiPersona: profile.aiPersona })
+                showStatus('success', `Persona "${getPersona(profile.aiPersona).name}" berhasil disimpan.`)
+                router.refresh()
+              } catch {
+                showStatus('error', 'Gagal menyimpan persona.')
+              } finally {
+                setIsSaving(false)
+              }
+            }}
+            disabled={isSaving}
+            className="h-11"
+          >
+            {isSaving ? 'Menyimpan...' : `Simpan Persona — ${getPersona(profile.aiPersona).emoji} ${getPersona(profile.aiPersona).name}`}
           </Button>
         </div>
       )}

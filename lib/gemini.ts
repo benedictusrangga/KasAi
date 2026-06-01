@@ -186,6 +186,7 @@ export async function chatWithAI(
     phoneNumber?: string
     businessType?: string
     businessName?: string
+    aiPersona?: string | null
     // Ringkasan keuangan — inject data real tapi hemat token
     financialSummary?: {
       totalIncome: number
@@ -229,8 +230,12 @@ ${fs.budgetStatus && fs.budgetStatus.length > 0 ? `- BUDGET BULAN INI: ${fs.budg
 - "laba bersih/profit" untuk selisih
 - Fokus pada profitabilitas, efisiensi biaya, dan pertumbuhan bisnis`
 
-  const systemInstruction = `Kamu adalah asisten AI keuangan KasAI untuk UMKM dan personal Indonesia.
-Nama: ${context?.businessName || 'Pengguna'}
+  // Bangun persona prompt
+  const { getPersona } = await import('./ai-personas')
+  const persona = getPersona(context?.aiPersona)
+
+  const baseInstruction = `Kamu adalah asisten AI keuangan KasAI untuk UMKM dan personal Indonesia.
+Nama bisnis/pengguna: ${context?.businessName || 'Pengguna'}
 ${personalContext}
 ${financialContext}
 
@@ -241,10 +246,12 @@ Tugasmu:
 - Jika belum ada data → bilang "belum ada transaksi tercatat"
 
 Format jawaban:
-- Bahasa Indonesia, ramah, to the point
-- Maks 3-4 kalimat untuk jawaban sederhana
+- Bahasa Indonesia, maks 3-4 kalimat untuk jawaban sederhana
 - Gunakan format Rp X.XXX.XXX
 - Boleh pakai emoji secukupnya untuk keterbacaan`
+
+  // Gabungkan persona + base instruction
+  const systemInstruction = `${persona.systemPrompt}\n\n${baseInstruction}`
 
   const contents = messages.map((msg) => ({
     role: msg.role === 'user' ? 'user' : 'model',

@@ -74,6 +74,7 @@ CREATE TABLE "user" (
   "accountType"   TEXT        DEFAULT 'personal',
   "plan"          TEXT        DEFAULT 'free',
   "planExpiresAt" TIMESTAMP,
+  "aiPersona"     TEXT        DEFAULT 'professional',
   "createdAt"     TIMESTAMP   NOT NULL DEFAULT NOW(),
   "updatedAt"     TIMESTAMP   NOT NULL DEFAULT NOW()
 );

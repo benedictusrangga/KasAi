@@ -133,6 +133,7 @@ export async function sendMessage(chatId: string, businessId: string, message: s
       phoneNumber: currentUser?.phoneNumber || undefined,
       businessType: businessInfo?.type || 'other',
       businessName: businessInfo?.name || 'Bisnis Anda',
+      aiPersona: currentUser?.aiPersona || 'professional',
       financialSummary,
     })
   } catch {

@@ -859,6 +859,7 @@ export async function handleTelegramUpdate(update: any) {
           phoneNumber: userRecord.phoneNumber || undefined,
           businessType: activeBusiness.type,
           businessName: activeBusiness.name,
+          aiPersona: userRecord.aiPersona || 'professional',
           financialSummary: {
             totalIncome,
             totalExpense,

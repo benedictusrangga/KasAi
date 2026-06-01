@@ -142,6 +142,7 @@ export async function updateUserProfile(
     currency?: string
     timezone?: string
     telegramId?: string
+    aiPersona?: string
   }
 ) {
   const userId = await getUserId()

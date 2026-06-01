@@ -48,7 +48,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
         />
 
         {/* Multi-user section — tampil untuk semua (owner lihat full, member lihat info) */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="rounded-2xl border border-border bg-card p-6">
           <MembersPanel
             businessId={businessId}
             businessName={biz.name}

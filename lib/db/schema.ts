@@ -25,6 +25,7 @@ export const user = pgTable('user', {
   accountType: text('accountType').default('personal'), // 'personal' or 'business'
   plan: text('plan').default('free'),                   // plan id from PLANS
   planExpiresAt: timestamp('planExpiresAt'),             // null = no expiry (lifetime/manual)
+  aiPersona: text('aiPersona').default('professional'), // AI personality: professional | sahabat | coach | santai
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
