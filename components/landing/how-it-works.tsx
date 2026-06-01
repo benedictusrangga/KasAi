@@ -5,69 +5,94 @@ export function LandingHowItWorks() {
       title: 'Daftar & Setup Bisnis',
       desc: 'Buat akun gratis dalam 2 menit. Pilih tipe bisnis Anda — cafe, laundry, retail, atau keuangan personal. AI akan menyesuaikan kategori dan saran secara otomatis.',
       detail: 'Tidak perlu kartu kredit',
-      color: 'from-violet-500 to-indigo-500',
+      gradient: 'linear-gradient(135deg, #7C3AED, #6366F1)',
+      glow: 'rgba(124,58,237,0.3)',
+      lineColor: 'rgba(124,58,237,0.4)',
     },
     {
       number: '02',
       title: 'Hubungkan Telegram',
       desc: 'Masukkan Telegram ID Anda di Settings. Bot langsung mengenali Anda dan siap menerima transaksi. Satu kali setup, selamanya aktif.',
       detail: 'Setup < 1 menit',
-      color: 'from-cyan-500 to-blue-500',
+      gradient: 'linear-gradient(135deg, #0EA5E9, #2AABEE)',
+      glow: 'rgba(14,165,233,0.3)',
+      lineColor: 'rgba(14,165,233,0.4)',
     },
     {
       number: '03',
       title: 'Catat Transaksi',
       desc: 'Kirim pesan ke bot, foto struk, atau input manual di dashboard. AI mencatat, mengkategorikan, dan mengkonfirmasi setiap transaksi secara real-time.',
       detail: 'Bahasa natural Indonesia',
-      color: 'from-emerald-500 to-teal-500',
+      gradient: 'linear-gradient(135deg, #10B981, #34D399)',
+      glow: 'rgba(16,185,129,0.3)',
+      lineColor: 'rgba(16,185,129,0.4)',
     },
     {
       number: '04',
       title: 'Analisis & Laporan',
       desc: 'Lihat dashboard real-time, tanya AI tentang keuangan bisnis Anda, dan export laporan PDF profesional langsung dari Telegram kapan saja.',
       detail: 'Laporan PDF instan',
-      color: 'from-amber-500 to-orange-500',
+      gradient: 'linear-gradient(135deg, #F59E0B, #FBBF24)',
+      glow: 'rgba(245,158,11,0.3)',
+      lineColor: 'rgba(245,158,11,0.4)',
     },
   ]
 
   return (
-    <section id="cara-kerja" className="py-32 relative">
-      <div className="absolute inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/[0.01] to-transparent" />
-      </div>
+    <section id="cara-kerja" className="py-32 relative overflow-hidden">
+      {/* Subtle bg */}
+      <div className="absolute inset-0 -z-10"
+        style={{ background: 'linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.008) 50%, transparent 100%)' }} />
 
       <div className="max-w-6xl mx-auto px-6">
+        {/* Header */}
         <div className="text-center mb-20">
-          <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-4">Cara Kerja</p>
-          <h2 className="text-4xl sm:text-5xl font-bold text-white mb-5">
+          <p className="text-[11px] font-bold text-violet-400 uppercase tracking-[0.15em] mb-4">Cara Kerja</p>
+          <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight mb-5">
             Dari daftar hingga laporan
             <br />
-            <span className="text-white/40">dalam hitungan menit.</span>
+            <span className="text-white/30">dalam hitungan menit.</span>
           </h2>
+          <p className="text-white/45 max-w-lg mx-auto">
+            Empat langkah sederhana untuk mulai mengelola keuangan bisnis Anda dengan AI.
+          </p>
         </div>
 
+        {/* Steps */}
         <div className="relative">
-          {/* Connecting line */}
-          <div className="absolute left-[28px] top-10 bottom-10 w-px bg-gradient-to-b from-violet-500/50 via-cyan-500/30 to-amber-500/50 hidden lg:block" />
+          {/* Connecting line — desktop */}
+          <div className="hidden lg:block absolute top-[52px] left-[calc(12.5%+20px)] right-[calc(12.5%+20px)] h-px"
+            style={{ background: 'linear-gradient(90deg, rgba(124,58,237,0.3), rgba(14,165,233,0.3), rgba(16,185,129,0.3), rgba(245,158,11,0.3))' }} />
 
-          <div className="space-y-6 lg:space-y-0 lg:grid lg:grid-cols-4 lg:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {steps.map((step, i) => (
-              <div key={step.number} className="relative group">
-                {/* Connector dot for desktop */}
-                <div className={`hidden lg:flex absolute -left-[calc(50%+28px)] top-10 h-3 w-3 rounded-full bg-gradient-to-br ${step.color} shadow-lg`} />
-
-                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 hover:border-white/[0.15] hover:bg-white/[0.05] transition-all duration-300 h-full">
-                  {/* Step number */}
-                  <div className={`inline-flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br ${step.color} mb-5 text-white font-black text-sm shadow-lg`}>
+              <div key={step.number} className="group relative flex flex-col">
+                {/* Step number circle */}
+                <div className="relative mb-6 flex justify-center lg:justify-start">
+                  <div
+                    className="relative flex h-[52px] w-[52px] items-center justify-center rounded-2xl text-white font-black text-sm shadow-lg transition-transform duration-300 group-hover:scale-110"
+                    style={{ background: step.gradient, boxShadow: `0 8px 24px ${step.glow}` }}
+                  >
                     {step.number}
+                    {/* Connector dot on line */}
+                    <div className="hidden lg:block absolute -bottom-[calc(24px+1px)] left-1/2 -translate-x-1/2 h-2 w-2 rounded-full"
+                      style={{ background: step.gradient, boxShadow: `0 0 8px ${step.glow}` }} />
                   </div>
+                </div>
 
-                  <h3 className="text-base font-bold text-white mb-3">{step.title}</h3>
-                  <p className="text-sm text-white/45 leading-relaxed mb-4">{step.desc}</p>
-
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-1 w-1 rounded-full bg-emerald-400" />
-                    <span className="text-xs text-emerald-400 font-medium">{step.detail}</span>
+                {/* Card */}
+                <div
+                  className="flex-1 rounded-2xl p-6 transition-all duration-300 group-hover:-translate-y-0.5"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)',
+                    border: '1px solid rgba(255,255,255,0.07)',
+                  }}
+                >
+                  <h3 className="text-base font-bold text-white mb-3 tracking-tight">{step.title}</h3>
+                  <p className="text-sm text-white/40 leading-relaxed mb-5">{step.desc}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                    <span className="text-xs text-emerald-400 font-semibold">{step.detail}</span>
                   </div>
                 </div>
               </div>

@@ -3,46 +3,74 @@ import Link from 'next/link'
 interface LogoProps {
   href?: string
   size?: 'sm' | 'md' | 'lg'
-  dark?: boolean // dark = white text (for dark backgrounds), light = dark text
+  dark?: boolean
 }
 
 const sizes = {
-  sm: { icon: 28, svg: 15, text: 'text-sm' },
-  md: { icon: 32, svg: 17, text: 'text-[15px]' },
-  lg: { icon: 38, svg: 20, text: 'text-lg' },
+  sm: { icon: 26, text: 'text-[13px]', gap: 'gap-2' },
+  md: { icon: 30, text: 'text-[15px]', gap: 'gap-2.5' },
+  lg: { icon: 36, text: 'text-[18px]', gap: 'gap-3' },
 }
 
 export function KasAILogo({ href = '/', size = 'md', dark = true }: LogoProps) {
   const s = sizes[size]
 
   const inner = (
-    <span className="flex items-center gap-2.5">
-      {/* Icon mark */}
+    <span className={`flex items-center ${s.gap}`}>
+      {/* Icon mark — abstract "K" monogram with gradient */}
       <span
-        className="relative flex shrink-0 items-center justify-center rounded-xl"
+        className="relative flex shrink-0 items-center justify-center rounded-[10px] overflow-hidden"
         style={{
           width: s.icon,
           height: s.icon,
-          background: 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 60%, #2563EB 100%)',
-          boxShadow: '0 2px 12px rgba(124,58,237,0.35)',
+          background: 'linear-gradient(135deg, #8B5CF6 0%, #6366F1 50%, #3B82F6 100%)',
+          boxShadow: dark
+            ? '0 0 0 1px rgba(139,92,246,0.3), 0 4px 16px rgba(99,102,241,0.4)'
+            : '0 0 0 1px rgba(139,92,246,0.2), 0 2px 8px rgba(99,102,241,0.25)',
         }}
       >
-        <svg width={s.svg} height={s.svg} viewBox="0 0 20 20" fill="none">
-          {/* Coin circle */}
-          <circle cx="9.5" cy="11.5" r="6" stroke="white" strokeWidth="1.5"/>
-          {/* Rupiah symbol inside coin */}
-          <path d="M9.5 8.5v6M7.5 10h4M7.5 11.5h4" stroke="white" strokeWidth="1.4" strokeLinecap="round"/>
-          {/* Sparkle top-right */}
+        {/* Subtle inner highlight */}
+        <span
+          className="absolute inset-0 rounded-[10px]"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%)',
+          }}
+        />
+        {/* Monogram SVG */}
+        <svg
+          width={Math.round(s.icon * 0.58)}
+          height={Math.round(s.icon * 0.58)}
+          viewBox="0 0 17 17"
+          fill="none"
+          className="relative z-10"
+        >
+          {/* Stylized "K" — vertical bar + two diagonal strokes */}
           <path
-            d="M15.5 2.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6.6-1.4z"
-            fill="white"
-            opacity="0.9"
+            d="M4.5 3v11M4.5 8.5L12 3M4.5 8.5L12 14"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
+          {/* Accent dot — top right sparkle */}
+          <circle cx="13.5" cy="3.5" r="1.5" fill="rgba(255,255,255,0.7)" />
         </svg>
       </span>
 
       {/* Wordmark */}
-      <span className={`font-bold tracking-tight ${s.text} ${dark ? 'text-white' : 'text-gray-900'}`}>
+      <span
+        className={`font-bold tracking-[-0.02em] leading-none ${s.text}`}
+        style={
+          dark
+            ? {
+                background: 'linear-gradient(90deg, #fff 0%, rgba(255,255,255,0.75) 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }
+            : { color: '#111' }
+        }
+      >
         KasAI
       </span>
     </span>
@@ -51,7 +79,7 @@ export function KasAILogo({ href = '/', size = 'md', dark = true }: LogoProps) {
   if (!href) return inner
 
   return (
-    <Link href={href} className="inline-flex items-center hover:opacity-90 transition-opacity">
+    <Link href={href} className="inline-flex items-center hover:opacity-85 transition-opacity duration-200">
       {inner}
     </Link>
   )
