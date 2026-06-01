@@ -70,9 +70,7 @@ export function LandingHowItWorks() {
 
         {/* Steps */}
         <div className="relative">
-          {/* Connecting line — desktop */}
-          <div className="hidden lg:block absolute top-[52px] left-[calc(12.5%+20px)] right-[calc(12.5%+20px)] h-px"
-            style={{ background: 'linear-gradient(90deg, rgba(124,58,237,0.3), rgba(14,165,233,0.3), rgba(16,185,129,0.3), rgba(245,158,11,0.3))' }} />
+
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {steps.map((step) => (
