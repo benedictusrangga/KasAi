@@ -42,6 +42,7 @@ const BUSINESS_TYPES = [
   { value: 'cafe', label: 'Cafe / Resto' },
   { value: 'retail', label: 'Toko Retail' },
   { value: 'other', label: 'Bisnis Lainnya' },
+  { value: 'personal', label: 'Keuangan Personal' },
 ]
 
 const TABS = [
@@ -295,12 +296,10 @@ export function SettingsPanel({ business, user, categories, products }: Props) {
           </div>
           <div className="space-y-1.5">
             <Label>Tipe Bisnis</Label>
-            <Select value={bizInfo.type} onValueChange={(v) => setBizInfo({ ...bizInfo, type: v as any })}>
-              <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {BUSINESS_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="h-11 px-3 flex items-center rounded-lg border border-border bg-muted/50 text-sm text-muted-foreground">
+              {BUSINESS_TYPES.find((t) => t.value === bizInfo.type)?.label || bizInfo.type}
+              <span className="ml-auto text-xs">🔒 Diatur oleh admin</span>
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="biz-desc">Deskripsi</Label>

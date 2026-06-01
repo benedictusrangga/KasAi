@@ -1,10 +1,16 @@
 import { db } from '@/lib/db'
-import { business, transaction, user } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { business, transaction, user, goal, budget } from '@/lib/db/schema'
+import { and, eq, gte, lte } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { extractTransactionsFromText, extractTransactionsFromImage, chatWithAI } from '@/lib/gemini'
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
+
+const CATEGORY_LABELS: Record<string, string> = {
+  groceries: 'Bahan Makanan', transportation: 'Transportasi', utilities: 'Utilitas',
+  entertainment: 'Hiburan', dining: 'Makan & Minum', shopping: 'Belanja',
+  healthcare: 'Kesehatan', education: 'Pendidikan', office_supplies: 'Perlengkapan Kantor', other: 'Lainnya',
+}
 
 function escapeHtml(text: string) {
   return text
@@ -108,18 +114,22 @@ export async function handleTelegramUpdate(update: any) {
     await sendTelegramMessage(
       chatId,
       `📖 <b>Panduan @Aiaccountingsbot</b>\n\n` +
-      `<b>Mencatat transaksi:</b>\n` +
+      `<b>📝 Mencatat transaksi:</b>\n` +
       `• "beli gula 50rb" → pengeluaran Rp 50.000\n` +
       `• "terima bayaran 1.5jt" → pemasukan Rp 1.500.000\n` +
-      `• "bayar listrik 320000" → pengeluaran Rp 320.000\n\n` +
-      `<b>Tanya laporan:</b>\n` +
+      `• Kirim foto struk/bukti transfer → AI baca otomatis\n\n` +
+      `<b>📊 Tanya AI:</b>\n` +
       `• "berapa laba bulan ini?"\n` +
-      `• "pengeluaran terbesar apa?"\n` +
-      `• "ringkasan keuangan minggu ini"\n\n` +
-      `<b>Perintah:</b>\n` +
+      `• "status budget hiburan saya"\n` +
+      `• "progress target saya"\n\n` +
+      `<b>⌨️ Perintah:</b>\n` +
       `/start - Mulai & info bot\n` +
       `/help - Panduan penggunaan\n` +
-      `/status - Cek status akun`,
+      `/status - Cek status akun\n` +
+      `/laporan - Laporan keuangan bulan ini\n` +
+      `/laporan_minggu - Laporan minggu ini\n` +
+      `/budget - Cek status budget bulan ini\n` +
+      `/target - Cek progress semua target`,
       'HTML'
     )
     return
@@ -148,7 +158,161 @@ export async function handleTelegramUpdate(update: any) {
     return
   }
 
-  // ── Identify user ──────────────────────────────────────────────────────────
+  // ── Handle /laporan & /laporan_minggu ──────────────────────────────────────
+  if (messageText === '/laporan' || messageText === '/laporan_minggu') {
+    const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
+    if (!tempUser) {
+      await sendTelegramMessage(chatId, '❌ Akun belum terhubung. Ketik /start untuk info.')
+      return
+    }
+    const tempBusinesses = await db.query.business.findMany({ where: eq(business.userId, tempUser.id) })
+    if (tempBusinesses.length === 0) {
+      await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis. Buat bisnis di aplikasi KasAI.')
+      return
+    }
+    const biz = tempBusinesses[0]
+    const now = new Date()
+    const isWeek = messageText === '/laporan_minggu'
+    let startDate: Date, endDate: Date, periodLabel: string
+
+    if (isWeek) {
+      const day = now.getDay()
+      startDate = new Date(now); startDate.setDate(now.getDate() - day); startDate.setHours(0,0,0,0)
+      endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 6); endDate.setHours(23,59,59)
+      periodLabel = 'Minggu Ini'
+    } else {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+      periodLabel = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+    }
+
+    const txns = await db.query.transaction.findMany({
+      where: and(
+        eq(transaction.businessId, biz.id),
+        eq(transaction.userId, tempUser.id),
+        gte(transaction.createdAt, startDate),
+        lte(transaction.createdAt, endDate)
+      ),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    })
+
+    const totalIncome = txns.filter(t => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
+    const totalExpense = txns.filter(t => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
+    const net = totalIncome - totalExpense
+
+    const byCategory: Record<string, number> = {}
+    txns.filter(t => t.transaction_type === 'expense').forEach(t => {
+      const cat = t.categoryId || 'other'
+      byCategory[cat] = (byCategory[cat] || 0) + parseFloat(t.amount)
+    })
+
+    const topCats = Object.entries(byCategory).sort(([,a],[,b]) => b-a).slice(0, 4)
+
+    let msg = `📊 <b>LAPORAN KEUANGAN</b>\n`
+    msg += `🏪 ${escapeHtml(biz.name)} · ${periodLabel}\n\n`
+    msg += `💰 <b>Ringkasan:</b>\n`
+    msg += `• Pemasukan: <b>Rp ${totalIncome.toLocaleString('id-ID')}</b>\n`
+    msg += `• Pengeluaran: <b>Rp ${totalExpense.toLocaleString('id-ID')}</b>\n`
+    msg += `• ${net >= 0 ? '✅ Laba' : '❌ Rugi'}: <b>Rp ${Math.abs(net).toLocaleString('id-ID')}</b>\n`
+    msg += `• Total transaksi: ${txns.length}\n`
+
+    if (topCats.length > 0) {
+      msg += `\n📂 <b>Pengeluaran terbesar:</b>\n`
+      topCats.forEach(([cat, amt]) => {
+        msg += `• ${CATEGORY_LABELS[cat] || cat}: Rp ${amt.toLocaleString('id-ID')}\n`
+      })
+    }
+
+    if (txns.length > 0) {
+      msg += `\n📋 <b>5 transaksi terakhir:</b>\n`
+      txns.slice(0, 5).forEach(t => {
+        const sign = t.transaction_type === 'income' ? '+' : '-'
+        const date = new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+        msg += `${sign}Rp ${parseFloat(t.amount).toLocaleString('id-ID')} — ${escapeHtml(t.description)} (${date})\n`
+      })
+    }
+
+    msg += `\n<i>Lihat laporan lengkap di aplikasi KasAI</i>`
+    await sendTelegramMessage(chatId, msg, 'HTML')
+    return
+  }
+
+  // ── Handle /budget ─────────────────────────────────────────────────────────
+  if (messageText === '/budget') {
+    const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
+    if (!tempUser) { await sendTelegramMessage(chatId, '❌ Akun belum terhubung.'); return }
+    const tempBiz = (await db.query.business.findMany({ where: eq(business.userId, tempUser.id) }))[0]
+    if (!tempBiz) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
+
+    const budgets = await db.query.budget.findMany({ where: and(eq(budget.businessId, tempBiz.id), eq(budget.userId, tempUser.id)) })
+    if (budgets.length === 0) {
+      await sendTelegramMessage(chatId, '📋 Belum ada budget yang ditetapkan.\n\nAtur budget di menu <b>Goals &amp; Budget</b> di aplikasi KasAI.', 'HTML')
+      return
+    }
+
+    const now = new Date()
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const txns = await db.query.transaction.findMany({
+      where: and(eq(transaction.businessId, tempBiz.id), eq(transaction.userId, tempUser.id), gte(transaction.createdAt, startMonth)),
+    })
+
+    const spentByCategory: Record<string, number> = {}
+    txns.filter(t => t.transaction_type === 'expense').forEach(t => {
+      const cat = t.categoryId || 'other'
+      spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
+    })
+
+    const monthLabel = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+    let msg = `🎯 <b>STATUS BUDGET — ${monthLabel}</b>\n\n`
+
+    budgets.forEach(b => {
+      const spent = spentByCategory[b.category] || 0
+      const budgetAmt = parseFloat(b.amount)
+      const pct = Math.round((spent / budgetAmt) * 100)
+      const bar = '█'.repeat(Math.min(Math.floor(pct / 10), 10)) + '░'.repeat(Math.max(10 - Math.floor(pct / 10), 0))
+      const icon = pct > 100 ? '🔴' : pct > 80 ? '🟡' : '🟢'
+      const label = CATEGORY_LABELS[b.category] || b.category
+      msg += `${icon} <b>${label}</b>\n`
+      msg += `${bar} ${pct}%\n`
+      msg += `Rp ${spent.toLocaleString('id-ID')} / Rp ${budgetAmt.toLocaleString('id-ID')}\n`
+      if (pct > 100) msg += `⚠️ Melebihi budget Rp ${(spent - budgetAmt).toLocaleString('id-ID')}\n`
+      else msg += `Sisa: Rp ${(budgetAmt - spent).toLocaleString('id-ID')}\n`
+      msg += '\n'
+    })
+
+    await sendTelegramMessage(chatId, msg, 'HTML')
+    return
+  }
+
+  // ── Handle /target ─────────────────────────────────────────────────────────
+  if (messageText === '/target') {
+    const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
+    if (!tempUser) { await sendTelegramMessage(chatId, '❌ Akun belum terhubung.'); return }
+    const tempBiz = (await db.query.business.findMany({ where: eq(business.userId, tempUser.id) }))[0]
+    if (!tempBiz) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
+
+    const goals = await db.query.goal.findMany({ where: and(eq(goal.businessId, tempBiz.id), eq(goal.userId, tempUser.id)) })
+    if (goals.length === 0) {
+      await sendTelegramMessage(chatId, '🎯 Belum ada target keuangan.\n\nTambahkan target di menu <b>Goals &amp; Budget</b> di aplikasi KasAI.', 'HTML')
+      return
+    }
+
+    let msg = `🎯 <b>PROGRESS TARGET KEUANGAN</b>\n\n`
+    goals.forEach(g => {
+      const pct = Math.min(Math.round((parseFloat(g.currentAmount) / parseFloat(g.targetAmount)) * 100), 100)
+      const bar = '█'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10))
+      const icon = g.completed ? '✅' : pct >= 75 ? '🔥' : pct >= 50 ? '💪' : '🎯'
+      msg += `${icon} <b>${escapeHtml(g.title)}</b>\n`
+      msg += `${bar} ${pct}%\n`
+      msg += `Rp ${parseFloat(g.currentAmount).toLocaleString('id-ID')} / Rp ${parseFloat(g.targetAmount).toLocaleString('id-ID')}\n`
+      if (g.deadline) msg += `📅 Deadline: ${new Date(g.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}\n`
+      if (g.completed) msg += `🎉 Target tercapai!\n`
+      msg += '\n'
+    })
+
+    await sendTelegramMessage(chatId, msg, 'HTML')
+    return
+  }
   let userRecord = senderTelegramId
     ? await findUserByTelegramId(senderTelegramId)
     : null
@@ -358,6 +522,44 @@ export async function handleTelegramUpdate(update: any) {
         `✅ Transaksi dicatat untuk <b>${escapeHtml(activeBusiness.name)}</b>:\n\n${summary}`,
         'HTML'
       )
+
+      // ── Budget alert setelah transaksi expense ─────────────────────────────
+      const expenseItems = created.filter(item => item.transactionType === 'expense')
+      if (expenseItems.length > 0) {
+        const now = new Date()
+        const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        const [budgets, monthTxns] = await Promise.all([
+          db.query.budget.findMany({ where: and(eq(budget.businessId, activeBusiness.id), eq(budget.userId, userRecord.id)) }),
+          db.query.transaction.findMany({
+            where: and(eq(transaction.businessId, activeBusiness.id), eq(transaction.userId, userRecord.id), gte(transaction.createdAt, startMonth)),
+          }),
+        ])
+
+        if (budgets.length > 0) {
+          const spentByCategory: Record<string, number> = {}
+          monthTxns.filter(t => t.transaction_type === 'expense').forEach(t => {
+            const cat = t.categoryId || 'other'
+            spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
+          })
+
+          const alerts: string[] = []
+          budgets.forEach(b => {
+            const spent = spentByCategory[b.category] || 0
+            const budgetAmt = parseFloat(b.amount)
+            const pct = (spent / budgetAmt) * 100
+            const label = CATEGORY_LABELS[b.category] || b.category
+            if (pct > 100) {
+              alerts.push(`🔴 Budget <b>${label}</b> melebihi batas! (${Math.round(pct)}% — Rp ${spent.toLocaleString('id-ID')} dari Rp ${budgetAmt.toLocaleString('id-ID')})`)
+            } else if (pct > 80) {
+              alerts.push(`🟡 Budget <b>${label}</b> hampir habis (${Math.round(pct)}% — sisa Rp ${(budgetAmt - spent).toLocaleString('id-ID')})`)
+            }
+          })
+
+          if (alerts.length > 0) {
+            await sendTelegramMessage(chatId, `⚠️ <b>Peringatan Budget:</b>\n\n${alerts.join('\n')}`, 'HTML')
+          }
+        }
+      }
       return
     }
 
@@ -398,7 +600,7 @@ export async function handleTelegramUpdate(update: any) {
       const aiResponse = await chatWithAI(
         [{ role: 'user', content: text }],
         {
-          accountType: userRecord.accountType || undefined,
+          accountType: userRecord.accountType || 'personal',
           phoneNumber: userRecord.phoneNumber || undefined,
           businessType: activeBusiness.type,
           businessName: activeBusiness.name,

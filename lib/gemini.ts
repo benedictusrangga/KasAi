@@ -113,10 +113,14 @@ function buildContextPrompt(context?: {
   businessName?: string
 }): string {
   if (!context) return ''
+  const isPersonal = context.accountType === 'personal'
   const parts: string[] = []
-  if (context.accountType) parts.push(`Tipe akun: ${context.accountType}.`)
-  if (context.businessName) parts.push(`Nama bisnis: ${context.businessName}.`)
-  if (context.businessType) parts.push(`Jenis bisnis: ${context.businessType}.`)
+  if (isPersonal) {
+    parts.push('Ini adalah keuangan personal (bukan bisnis).')
+  } else {
+    if (context.businessName) parts.push(`Nama bisnis: ${context.businessName}.`)
+    if (context.businessType) parts.push(`Jenis bisnis: ${context.businessType}.`)
+  }
   return parts.join(' ')
 }
 
@@ -192,37 +196,55 @@ export async function chatWithAI(
       monthExpense: number
       topExpenses: Array<{ desc: string; amount: number }>
       recentTx: Array<{ type: string; desc: string; amount: number; date: string }>
+      budgetStatus?: Array<{ category: string; budget: number; spent: number; percentage: number }>
+      activeGoals?: Array<{ title: string; target: number; current: number; percentage: number; deadline: string | null }>
     }
   }
 ): Promise<string> {
   const fs = context?.financialSummary
+  const isPersonal = context?.accountType === 'personal'
 
   // Bangun ringkasan keuangan yang ringkas (hemat token)
   const financialContext = fs ? `
-DATA KEUANGAN BISNIS (gunakan ini untuk menjawab pertanyaan):
+DATA KEUANGAN (gunakan untuk menjawab pertanyaan):
 - Total pemasukan: Rp ${fs.totalIncome.toLocaleString('id-ID')}
 - Total pengeluaran: Rp ${fs.totalExpense.toLocaleString('id-ID')}
-- Laba bersih: Rp ${fs.netProfit.toLocaleString('id-ID')}
+- ${isPersonal ? 'Sisa uang' : 'Laba bersih'}: Rp ${fs.netProfit.toLocaleString('id-ID')}
 - Total transaksi: ${fs.txCount}
-- Bulan ini - pemasukan: Rp ${fs.monthIncome.toLocaleString('id-ID')}, pengeluaran: Rp ${fs.monthExpense.toLocaleString('id-ID')}
+- Bulan ini — pemasukan: Rp ${fs.monthIncome.toLocaleString('id-ID')}, pengeluaran: Rp ${fs.monthExpense.toLocaleString('id-ID')}
 ${fs.topExpenses.length > 0 ? `- Pengeluaran terbesar: ${fs.topExpenses.map(e => `${e.desc} (Rp ${e.amount.toLocaleString('id-ID')})`).join(', ')}` : ''}
-${fs.recentTx.length > 0 ? `- 5 transaksi terakhir: ${fs.recentTx.map(t => `${t.type === 'income' ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')} (${t.desc}, ${t.date})`).join(' | ')}` : ''}` : ''
+${fs.recentTx.length > 0 ? `- 5 terakhir: ${fs.recentTx.map(t => `${t.type === 'income' ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')} ${t.desc} (${t.date})`).join(' | ')}` : ''}
+${fs.activeGoals && fs.activeGoals.length > 0 ? `- TARGET AKTIF: ${fs.activeGoals.map(g => `"${g.title}" ${g.percentage}% (${g.current.toLocaleString('id-ID')}/${g.target.toLocaleString('id-ID')})${g.deadline ? ` deadline ${g.deadline}` : ''}`).join(', ')}` : ''}
+${fs.budgetStatus && fs.budgetStatus.length > 0 ? `- BUDGET BULAN INI: ${fs.budgetStatus.map(b => `${b.category} ${b.percentage}% (Rp ${b.spent.toLocaleString('id-ID')} dari Rp ${b.budget.toLocaleString('id-ID')})`).join(', ')}` : ''}` : ''
 
-  const systemInstruction = `Kamu adalah asisten AI keuangan KasAI untuk UMKM Indonesia.
-Bisnis: ${context?.businessName || '-'} (${context?.businessType || 'umum'})
+  const personalContext = isPersonal
+    ? `Ini adalah akun KEUANGAN PERSONAL (bukan bisnis). Gunakan istilah yang sesuai:
+- "pemasukan/pendapatan" bukan "omzet"
+- "pengeluaran/belanja" bukan "biaya operasional"
+- "sisa uang/tabungan" bukan "laba bersih"
+- Fokus pada budgeting, penghematan, dan kebiasaan belanja`
+    : `Ini adalah akun BISNIS (${context?.businessType || 'umum'}). Gunakan istilah bisnis:
+- "omzet/pendapatan" untuk pemasukan
+- "biaya/pengeluaran operasional" untuk pengeluaran
+- "laba bersih/profit" untuk selisih
+- Fokus pada profitabilitas, efisiensi biaya, dan pertumbuhan bisnis`
+
+  const systemInstruction = `Kamu adalah asisten AI keuangan KasAI untuk UMKM dan personal Indonesia.
+Nama: ${context?.businessName || 'Pengguna'}
+${personalContext}
 ${financialContext}
 
 Tugasmu:
-- Jawab pertanyaan keuangan berdasarkan DATA DI ATAS
-- Bantu catat transaksi jika user menyebut nominal
-- Beri saran keuangan yang actionable
-- Jika ditanya "berapa pendapatan/pengeluaran/laba" → jawab dari data di atas
+- Jawab pertanyaan keuangan berdasarkan DATA DI ATAS secara akurat
+- Beri insight dan saran yang relevan dengan tipe akun
+- Jika ditanya nominal → jawab langsung dari data, jangan tanya balik
+- Jika belum ada data → bilang "belum ada transaksi tercatat"
 
-Aturan:
-- Bahasa Indonesia, ramah, singkat (maks 3 kalimat untuk jawaban sederhana)
-- Format Rupiah: Rp X.XXX.XXX
-- Jangan tanya balik jika data sudah tersedia
-- Jika data tidak ada (belum ada transaksi), bilang "belum ada data transaksi"`
+Format jawaban:
+- Bahasa Indonesia, ramah, to the point
+- Maks 3-4 kalimat untuk jawaban sederhana
+- Gunakan format Rp X.XXX.XXX
+- Boleh pakai emoji secukupnya untuk keterbacaan`
 
   const contents = messages.map((msg) => ({
     role: msg.role === 'user' ? 'user' : 'model',

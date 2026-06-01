@@ -188,3 +188,28 @@ export const onboardingProgress = pgTable('onboarding_progress', {
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
+
+export const goal = pgTable('goal', {
+  id: text('id').primaryKey(),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  businessId: text('businessId').references(() => business.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  description: text('description'),
+  targetAmount: decimal('targetAmount', { precision: 12, scale: 2 }).notNull(),
+  currentAmount: decimal('currentAmount', { precision: 12, scale: 2 }).notNull().default('0'),
+  deadline: timestamp('deadline'),
+  completed: boolean('completed').notNull().default(false),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const budget = pgTable('budget', {
+  id: text('id').primaryKey(),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  businessId: text('businessId').references(() => business.id, { onDelete: 'cascade' }),
+  category: text('category').notNull(),
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  period: text('period').notNull().default('monthly'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})

@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: 'Transaksi', href: (id: string) => `/dashboard/${id}/transactions`, icon: '↕', exact: false },
   { label: 'Tambah', href: (id: string) => `/dashboard/${id}/add-expense`, icon: '+', exact: false },
   { label: 'AI Chat', href: (id: string) => `/dashboard/${id}/ai-chat`, icon: '✦', exact: false },
+  { label: 'Goals & Budget', href: (id: string) => `/dashboard/${id}/goals`, icon: '🎯', exact: false },
   { label: 'Laporan', href: (id: string) => `/dashboard/${id}/reports`, icon: '◈', exact: false },
   { label: 'Pengaturan', href: (id: string) => `/dashboard/${id}/settings`, icon: '⚙', exact: false },
 ]

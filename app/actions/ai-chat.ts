@@ -2,7 +2,7 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { aiChat, business, transaction, user } from '@/lib/db/schema'
+import { aiChat, business, transaction, user, goal, budget } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -42,10 +42,18 @@ export async function getAiChat(chatId: string) {
 }
 
 async function buildFinancialSummary(businessId: string, userId: string) {
-  const allTxns = await db.query.transaction.findMany({
-    where: and(eq(transaction.businessId, businessId), eq(transaction.userId, userId)),
-    orderBy: (t, { desc }) => [desc(t.createdAt)],
-  })
+  const [allTxns, goals, budgets] = await Promise.all([
+    db.query.transaction.findMany({
+      where: and(eq(transaction.businessId, businessId), eq(transaction.userId, userId)),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+    }),
+    db.query.goal.findMany({
+      where: and(eq(goal.businessId, businessId), eq(goal.userId, userId)),
+    }),
+    db.query.budget.findMany({
+      where: and(eq(budget.businessId, businessId), eq(budget.userId, userId)),
+    }),
+  ])
 
   const now = new Date()
   const thisMonth = allTxns.filter((t) => {
@@ -71,7 +79,33 @@ async function buildFinancialSummary(businessId: string, userId: string) {
     date: new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
   }))
 
-  return { totalIncome, totalExpense, netProfit: totalIncome - totalExpense, txCount: allTxns.length, monthIncome, monthExpense, topExpenses, recentTx }
+  // Budget status bulan ini
+  const spendingByCategory: Record<string, number> = {}
+  thisMonth.filter((t) => t.transaction_type === 'expense').forEach((t) => {
+    const cat = t.categoryId || 'other'
+    spendingByCategory[cat] = (spendingByCategory[cat] || 0) + parseFloat(t.amount)
+  })
+
+  const budgetStatus = budgets.map((b) => ({
+    category: b.category,
+    budget: parseFloat(b.amount),
+    spent: spendingByCategory[b.category] || 0,
+    percentage: Math.round(((spendingByCategory[b.category] || 0) / parseFloat(b.amount)) * 100),
+  }))
+
+  const activeGoals = goals.filter((g) => !g.completed).map((g) => ({
+    title: g.title,
+    target: parseFloat(g.targetAmount),
+    current: parseFloat(g.currentAmount),
+    percentage: Math.round((parseFloat(g.currentAmount) / parseFloat(g.targetAmount)) * 100),
+    deadline: g.deadline ? new Date(g.deadline).toLocaleDateString('id-ID') : null,
+  }))
+
+  return {
+    totalIncome, totalExpense, netProfit: totalIncome - totalExpense,
+    txCount: allTxns.length, monthIncome, monthExpense,
+    topExpenses, recentTx, budgetStatus, activeGoals,
+  }
 }
 
 export async function sendMessage(chatId: string, businessId: string, message: string) {

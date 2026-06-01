@@ -3,6 +3,7 @@ import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getBusiness } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
+import { PdfExport } from '@/components/pdf-export'
 
 export const metadata = { title: 'Laporan Keuangan — KasAI' }
 export const dynamic = 'force-dynamic'
@@ -81,9 +82,12 @@ export default async function ReportsPage({ params }: { params: Promise<{ busine
     return (
       <div className="p-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Laporan Keuangan</h1>
-          <p className="text-muted-foreground mt-1">{business.name} · Semua waktu</p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Laporan Keuangan</h1>
+            <p className="text-muted-foreground mt-1">{business.name} · Semua waktu</p>
+          </div>
+          <PdfExport businessId={businessId} businessName={business.name} />
         </div>
 
         {/* KPI Cards */}
