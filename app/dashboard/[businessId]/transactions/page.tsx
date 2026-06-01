@@ -93,77 +93,77 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
     .reduce((s, t) => s + parseFloat(t.amount), 0)
 
   return (
-    <div className="p-8">
+    <div className="p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Transaksi</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Transaksi</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Semua pemasukan dan pengeluaran bisnis Anda
           </p>
         </div>
         <Link href={`/dashboard/${businessId}/add-expense`}>
-          <Button>+ Tambah Transaksi</Button>
+          <Button size="sm" className="gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6.5 2v9M2 6.5h9"/></svg>
+            Tambah Transaksi
+          </Button>
         </Link>
       </div>
 
       {/* Summary */}
       {!isLoading && transactions.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
-            <p className="text-xs text-muted-foreground">Pemasukan (filter)</p>
-            <p className="text-lg font-bold text-emerald-600">
-              Rp {totalIncome.toLocaleString('id-ID')}
-            </p>
-          </div>
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
-            <p className="text-xs text-muted-foreground">Pengeluaran (filter)</p>
-            <p className="text-lg font-bold text-rose-500">
-              Rp {totalExpense.toLocaleString('id-ID')}
-            </p>
-          </div>
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
-            <p className="text-xs text-muted-foreground">Ditampilkan</p>
-            <p className="text-lg font-bold text-foreground">{filtered.length} transaksi</p>
-          </div>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          {[
+            { label: 'Pemasukan (filter)', value: totalIncome,  color: 'text-emerald-500', dot: 'bg-emerald-500' },
+            { label: 'Pengeluaran (filter)',value: totalExpense, color: 'text-rose-500',    dot: 'bg-rose-500' },
+            { label: 'Ditampilkan',         value: null,        color: 'text-foreground',  dot: 'bg-blue-500', count: filtered.length },
+          ].map((s) => (
+            <div key={s.label} className="rounded-2xl border border-border bg-card px-4 py-3">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <div className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+              </div>
+              <p className={`text-base font-bold ${s.color}`}>
+                {s.count !== undefined ? `${s.count} transaksi` : `Rp ${s.value!.toLocaleString('id-ID')}`}
+              </p>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6 flex-wrap">
+      <div className="flex flex-col sm:flex-row gap-2 mb-5 flex-wrap">
         <Input
           placeholder="Cari transaksi..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-xs"
+          className="max-w-xs h-9 text-sm"
         />
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap">
           {(['all', 'income', 'expense'] as const).map((type) => (
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-150 ${
                 filterType === type
-                  ? 'bg-primary text-primary-foreground'
+                  ? 'text-white shadow-sm'
                   : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               }`}
+              style={filterType === type ? { background: 'linear-gradient(135deg, #7C3AED, #6366F1)' } : {}}
             >
               {type === 'all' ? 'Semua' : type === 'income' ? 'Pemasukan' : 'Pengeluaran'}
             </button>
           ))}
         </div>
-        {/* Filter by member — hanya tampil jika ada lebih dari 1 inputter */}
         {uniqueInputters.length > 1 && (
           <select
             value={filterMember}
             onChange={(e) => setFilterMember(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            className="px-3 py-1.5 rounded-xl text-xs border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary h-9"
           >
             <option value="all">Semua anggota</option>
             {uniqueInputters.map((uid) => (
-              <option key={uid} value={uid}>
-                {memberMap[uid] || uid}
-              </option>
+              <option key={uid} value={uid}>{memberMap[uid] || uid}</option>
             ))}
           </select>
         )}

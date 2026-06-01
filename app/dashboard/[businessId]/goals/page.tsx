@@ -43,10 +43,10 @@ export default async function GoalsPage({ params }: { params: Promise<{ business
       })
 
     return (
-      <div className="p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Goals & Budget</h1>
-          <p className="text-muted-foreground mt-1">
+      <div className="p-6 lg:p-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Goals & Budget</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Tetapkan target keuangan dan batas pengeluaran — AI akan membantu Anda mencapainya
           </p>
         </div>

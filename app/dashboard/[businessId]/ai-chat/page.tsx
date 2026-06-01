@@ -46,17 +46,17 @@ export default async function AiChatPage({
     const messages = (chat?.messages || []) as Array<{ role: 'user' | 'assistant'; content: string }>
 
     return (
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-8 py-4 shrink-0">
+        <div className="flex items-center justify-between border-b border-border px-6 py-3.5 shrink-0 bg-card">
           <div>
-            <h1 className="text-xl font-bold text-foreground">AI Financial Assistant</h1>
-            <p className="text-sm text-muted-foreground">{business.name} · Powered by Gemini AI</p>
+            <h1 className="text-base font-semibold text-foreground">AI Financial Assistant</h1>
+            <p className="text-xs text-muted-foreground">{business.name} · Powered by Gemini AI</p>
           </div>
           <div className="flex items-center gap-3">
             <PdfExport businessId={businessId} businessName={business.name} />
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="flex items-center gap-1.5">
+              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-xs text-muted-foreground">Online</span>
             </div>
           </div>

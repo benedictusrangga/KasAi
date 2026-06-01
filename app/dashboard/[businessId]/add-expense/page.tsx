@@ -24,7 +24,7 @@ export default async function AddExpensePage({ params }: { params: Promise<{ bus
     ])
 
     return (
-      <div className="p-8 flex justify-center">
+      <div className="p-6 lg:p-8 flex justify-center">
         <AddExpenseForm businessId={businessId} categories={categories} />
       </div>
     )

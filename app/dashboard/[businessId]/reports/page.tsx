@@ -80,27 +80,30 @@ export default async function ReportsPage({ params }: { params: Promise<{ busine
     })
 
     return (
-      <div className="p-8">
+      <div className="p-6 lg:p-8">
         {/* Header */}
-        <div className="mb-8 flex items-start justify-between gap-4">
+        <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Laporan Keuangan</h1>
-            <p className="text-muted-foreground mt-1">{business.name} · Semua waktu</p>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">Laporan Keuangan</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">{business.name} · Semua waktu</p>
           </div>
           <PdfExport businessId={businessId} businessName={business.name} />
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           {[
-            { label: 'Total Pemasukan', value: `Rp ${totalIncome.toLocaleString('id-ID')}`, color: 'text-emerald-600', sub: `${transactions.filter((t) => t.transaction_type === 'income').length} transaksi` },
-            { label: 'Total Pengeluaran', value: `Rp ${totalExpense.toLocaleString('id-ID')}`, color: 'text-rose-500', sub: `${transactions.filter((t) => t.transaction_type === 'expense').length} transaksi` },
-            { label: 'Laba Bersih', value: `Rp ${netProfit.toLocaleString('id-ID')}`, color: netProfit >= 0 ? 'text-primary' : 'text-rose-500', sub: netProfit >= 0 ? '↑ Positif' : '↓ Negatif' },
-            { label: 'Margin Laba', value: `${profitMargin}%`, color: parseFloat(profitMargin) >= 20 ? 'text-emerald-600' : 'text-amber-500', sub: `dari ${transactions.length} transaksi` },
+            { label: 'Total Pemasukan', value: `Rp ${totalIncome.toLocaleString('id-ID')}`, color: 'text-emerald-500', dot: 'bg-emerald-500', sub: `${transactions.filter((t) => t.transaction_type === 'income').length} transaksi` },
+            { label: 'Total Pengeluaran', value: `Rp ${totalExpense.toLocaleString('id-ID')}`, color: 'text-rose-500', dot: 'bg-rose-500', sub: `${transactions.filter((t) => t.transaction_type === 'expense').length} transaksi` },
+            { label: 'Laba Bersih', value: `Rp ${netProfit.toLocaleString('id-ID')}`, color: netProfit >= 0 ? 'text-violet-500' : 'text-rose-500', dot: netProfit >= 0 ? 'bg-violet-500' : 'bg-rose-500', sub: netProfit >= 0 ? '↑ Positif' : '↓ Negatif' },
+            { label: 'Margin Laba', value: `${profitMargin}%`, color: parseFloat(profitMargin) >= 20 ? 'text-emerald-500' : 'text-amber-500', dot: parseFloat(profitMargin) >= 20 ? 'bg-emerald-500' : 'bg-amber-500', sub: `dari ${transactions.length} transaksi` },
           ].map((kpi) => (
-            <div key={kpi.label} className="rounded-2xl border border-border bg-card p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{kpi.label}</p>
-              <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}</p>
+            <div key={kpi.label} className="rounded-2xl border border-border bg-card p-4 lg:p-5">
+              <div className="flex items-center gap-1.5 mb-3">
+                <div className={`h-1.5 w-1.5 rounded-full ${kpi.dot}`} />
+                <p className="text-xs font-medium text-muted-foreground">{kpi.label}</p>
+              </div>
+              <p className={`text-xl font-bold tracking-tight ${kpi.color}`}>{kpi.value}</p>
               <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
             </div>
           ))}

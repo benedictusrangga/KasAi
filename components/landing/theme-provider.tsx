@@ -13,23 +13,20 @@ export function LandingThemeProvider({ children }: { children: React.ReactNode }
   const [theme, setTheme] = useState<Theme>('dark')
 
   useEffect(() => {
-    const stored = localStorage.getItem('landing-theme') as Theme | null
-    if (stored === 'light' || stored === 'dark') {
-      setTheme(stored)
-      document.documentElement.classList.toggle('dark', stored === 'dark')
-      document.documentElement.classList.toggle('light', stored === 'light')
-    } else {
-      // default dark
-      document.documentElement.classList.add('dark')
-    }
+    // Baca dari key global (kasai-theme) atau fallback ke landing-theme
+    const stored = (localStorage.getItem('kasai-theme') ?? localStorage.getItem('landing-theme')) as Theme | null
+    const resolved = stored ?? 'dark'
+    setTheme(resolved)
+    document.documentElement.classList.toggle('dark', resolved === 'dark')
   }, [])
 
   const toggle = () => {
     setTheme((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark'
+      // Simpan ke kedua key agar sync dengan dashboard
+      localStorage.setItem('kasai-theme', next)
       localStorage.setItem('landing-theme', next)
       document.documentElement.classList.toggle('dark', next === 'dark')
-      document.documentElement.classList.toggle('light', next === 'light')
       return next
     })
   }

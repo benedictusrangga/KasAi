@@ -31,10 +31,10 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
     ])
 
     return (
-      <div className="p-8 space-y-10">
-        <div className="mb-2">
-          <h1 className="text-3xl font-bold text-foreground">Pengaturan</h1>
-          <p className="text-muted-foreground mt-1">
+      <div className="p-6 lg:p-8 space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Pengaturan</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Kelola profil, bisnis, kategori, integrasi Telegram, dan plan
           </p>
         </div>
