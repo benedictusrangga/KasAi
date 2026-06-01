@@ -6,6 +6,7 @@ import { createAiChat, getAiChat } from '@/app/actions/ai-chat'
 import { AiChat } from '@/components/ai-chat'
 
 export const metadata = { title: 'AI Assistant — KasAI' }
+export const dynamic = 'force-dynamic'
 
 export default async function AiChatPage({
   params,

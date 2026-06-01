@@ -5,6 +5,7 @@ import { getBusiness, getBusinessCategories, getBusinessProducts, getCurrentUser
 import { SettingsPanel } from '@/components/settings-panel'
 
 export const metadata = { title: 'Pengaturan — KasAI' }
+export const dynamic = 'force-dynamic'
 
 export default async function SettingsPage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = await params

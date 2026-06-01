@@ -5,6 +5,7 @@ import { getBusiness } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
 
 export const metadata = { title: 'Laporan Keuangan — KasAI' }
+export const dynamic = 'force-dynamic'
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 

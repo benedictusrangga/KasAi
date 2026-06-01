@@ -5,6 +5,7 @@ import { getBusiness } from '@/app/actions/business'
 import { AddExpenseForm } from '@/components/add-expense-form'
 
 export const metadata = { title: 'Tambah Transaksi — KasAI' }
+export const dynamic = 'force-dynamic'
 
 export default async function AddExpensePage({ params }: { params: Promise<{ businessId: string }> }) {
   const { businessId } = await params

@@ -5,9 +5,9 @@ import Link from 'next/link'
 import { getBusiness } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 
 export const generateStaticParams = async () => []
+export const dynamic = 'force-dynamic'
 
 export const metadata = {
   title: 'Dashboard Bisnis — KasAI',
@@ -247,8 +247,8 @@ export default async function BusinessDashboardPage({
                   <p className="text-sm font-semibold text-foreground mb-1">Catat via Telegram</p>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Daftarkan nomor HP di Pengaturan, lalu chat ke{' '}
-                    <a href="https://t.me/Aoaccountingsbot" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">
-                      @Aoaccountingsbot
+                    <a href="https://t.me/Aiaccountingsbot" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">
+                      @Aiaccountingsbot
                     </a>{' '}
                     — transaksi langsung tercatat tanpa buka aplikasi.
                   </p>

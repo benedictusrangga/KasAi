@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 export const metadata = {
   title: 'Dashboard — KasAI',
 }
+export const dynamic = 'force-dynamic'
 
 const BUSINESS_ICONS: Record<string, string> = {
   florist: '🌸',

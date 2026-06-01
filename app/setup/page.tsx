@@ -7,6 +7,7 @@ import Link from 'next/link'
 export const metadata = {
   title: 'Tambah Bisnis — KasAI',
 }
+export const dynamic = 'force-dynamic'
 
 export default async function SetupPage() {
   const h = await headers()

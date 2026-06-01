@@ -10,6 +10,7 @@ export const metadata = {
   description:
     'Catat transaksi lewat Telegram, foto struk, atau suara. AI kami memahami bisnis Anda dan memberikan laporan keuangan real-time.',
 }
+export const dynamic = 'force-dynamic'
 
 export default async function LandingPage() {
   const h = await headers()
