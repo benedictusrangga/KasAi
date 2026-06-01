@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useParams, useRouter } from 'next/navigation'
+import { usePathname, useParams } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
 import { useState } from 'react'
+import { KasAILogo } from '@/components/logo'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: (id: string) => `/dashboard/${id}`, icon: '▦', exact: true },
@@ -43,11 +44,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Sidebar */}
       <aside className="flex w-60 flex-col border-r border-border bg-sidebar">
         {/* Logo */}
-        <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs">
-            K
-          </div>
-          <span className="text-base font-bold text-sidebar-foreground">KasAI</span>
+        <div className="flex h-16 items-center border-b border-sidebar-border px-5">
+          <KasAILogo href="/dashboard" size="sm" dark={true} />
         </div>
 
         {/* My Businesses link */}

@@ -2,11 +2,12 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { transaction, business } from '@/lib/db/schema'
-import { and, eq, desc } from 'drizzle-orm'
+import { transaction, business, user } from '@/lib/db/schema'
+import { and, eq, desc, gte, count } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
+import { getPlan, isLimitReached } from '@/lib/plan-limits'
 
 async function getUserId() {
   const h = await headers()
@@ -41,6 +42,25 @@ export async function createTransaction(
   // Validasi amount
   if (isNaN(amount) || amount <= 0) throw new Error('Jumlah harus lebih dari 0')
   if (!description?.trim()) throw new Error('Deskripsi tidak boleh kosong')
+
+  // Enforce plan limits
+  const currentUser = await db.query.user.findFirst({ where: eq(user.id, userId) })
+  const plan = getPlan(currentUser?.plan)
+
+  if (plan.maxTxPerMonth !== Infinity) {
+    const now = new Date()
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const [{ value: txCount }] = await db
+      .select({ value: count() })
+      .from(transaction)
+      .where(and(eq(transaction.userId, userId), gte(transaction.createdAt, startMonth)))
+
+    if (txCount >= plan.maxTxPerMonth) {
+      throw new Error(
+        `LIMIT_REACHED:Batas ${plan.maxTxPerMonth} transaksi/bulan untuk plan ${plan.name} sudah tercapai. Upgrade plan untuk transaksi lebih banyak.`
+      )
+    }
+  }
 
   const id = nanoid()
   await db.insert(transaction).values({
@@ -133,4 +153,15 @@ export async function deleteTransaction(transactionId: string) {
 
   revalidatePath('/')
   return { transactionId }
+}
+
+export async function getTransactionCountThisMonth(businessId: string): Promise<number> {
+  const userId = await getUserId()
+  const now = new Date()
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const [{ value }] = await db
+    .select({ value: count() })
+    .from(transaction)
+    .where(and(eq(transaction.userId, userId), gte(transaction.createdAt, startMonth)))
+  return value
 }

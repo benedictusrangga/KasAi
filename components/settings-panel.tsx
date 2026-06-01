@@ -22,6 +22,7 @@ import {
   updateBusiness,
   updateUserProfile,
 } from '@/app/actions/business'
+import { PLANS, PLAN_GROUPS, getPlan, type PlanId } from '@/lib/plan-limits'
 
 const CATEGORY_TYPES = [
   { value: 'groceries', label: 'Bahan Makanan' },
@@ -50,16 +51,27 @@ const TABS = [
   { id: 'business', label: '🏪 Info Bisnis' },
   { id: 'categories', label: '🏷️ Kategori' },
   { id: 'products', label: '📦 Produk & Layanan' },
+  { id: 'plan', label: '🚀 Plan & Upgrade' },
 ]
 
 type Props = {
   business: { id: string; name: string; type: string; description?: string | null }
-  user: { name?: string | null; phoneNumber?: string | null; accountType?: string | null; currency?: string | null; timezone?: string | null; telegramId?: string | null }
+  user: {
+    name?: string | null
+    phoneNumber?: string | null
+    accountType?: string | null
+    currency?: string | null
+    timezone?: string | null
+    telegramId?: string | null
+    plan?: string | null
+    planExpiresAt?: Date | null
+  }
   categories: Array<{ id: string; name: string; type: string; description?: string | null }>
   products: Array<{ id: string; name: string; unit?: string | null; price?: string | null; description?: string | null }>
+  txThisMonth?: number
 }
 
-export function SettingsPanel({ business, user, categories, products }: Props) {
+export function SettingsPanel({ business, user, categories, products, txThisMonth = 0 }: Props) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('profile')
   const [isSaving, setIsSaving] = useState(false)
@@ -423,6 +435,196 @@ export function SettingsPanel({ business, user, categories, products }: Props) {
           )}
         </div>
       )}
+
+      {/* Plan & Upgrade tab */}
+      {activeTab === 'plan' && (() => {
+        const currentPlan = getPlan(user.plan)
+        const usagePct = currentPlan.maxTxPerMonth === Infinity
+          ? 0
+          : Math.min(Math.round((txThisMonth / currentPlan.maxTxPerMonth) * 100), 100)
+        const isAtLimit = currentPlan.maxTxPerMonth !== Infinity && txThisMonth >= currentPlan.maxTxPerMonth
+        const isNearLimit = usagePct >= 80 && !isAtLimit
+
+        return (
+          <div className="space-y-8 max-w-3xl">
+            {/* Current plan card */}
+            <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-6">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Plan Aktif</p>
+                  <h3 className="text-2xl font-bold text-foreground">{currentPlan.name}</h3>
+                  <p className="text-muted-foreground text-sm mt-0.5">{currentPlan.desc}</p>
+                  {user.planExpiresAt && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      ⏰ Berlaku sampai {new Date(user.planExpiresAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-primary">{currentPlan.priceLabel}</p>
+                  <p className="text-sm text-muted-foreground">{currentPlan.period}</p>
+                </div>
+              </div>
+
+              {/* Usage */}
+              {currentPlan.maxTxPerMonth !== Infinity && (
+                <div className="mt-5">
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-foreground font-medium">Penggunaan Transaksi Bulan Ini</span>
+                    <span className={`font-semibold ${isAtLimit ? 'text-destructive' : isNearLimit ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {txThisMonth} / {currentPlan.maxTxPerMonth} ({usagePct}%)
+                    </span>
+                  </div>
+                  <div className="h-3 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        isAtLimit ? 'bg-destructive' : isNearLimit ? 'bg-amber-400' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${usagePct}%` }}
+                    />
+                  </div>
+                  {isAtLimit && (
+                    <p className="text-xs text-destructive mt-2 font-medium">
+                      🚫 Batas transaksi bulan ini tercapai. Upgrade untuk melanjutkan pencatatan.
+                    </p>
+                  )}
+                  {isNearLimit && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      ⚠️ Tersisa {currentPlan.maxTxPerMonth - txThisMonth} transaksi bulan ini.
+                    </p>
+                  )}
+                </div>
+              )}
+              {currentPlan.maxTxPerMonth === Infinity && (
+                <div className="mt-4 flex items-center gap-2 text-sm text-emerald-600">
+                  <span>✓</span>
+                  <span className="font-medium">Transaksi tak terbatas — tidak ada batasan penggunaan</span>
+                </div>
+              )}
+            </div>
+
+            {/* Upgrade options */}
+            <div>
+              <h3 className="text-lg font-bold text-foreground mb-2">Upgrade Plan</h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                Untuk upgrade, hubungi admin atau tim KasAI. Perubahan plan akan aktif segera setelah konfirmasi pembayaran.
+              </p>
+
+              {/* Personal plans */}
+              <div className="mb-6">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Personal — 1 Bisnis</p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {PLAN_GROUPS.personal.map(plan => {
+                    const isCurrent = user.plan === plan.id
+                    const isUpgrade = (plan.price > currentPlan.price) || (currentPlan.maxTxPerMonth !== Infinity && plan.maxTxPerMonth === Infinity)
+                    return (
+                      <div
+                        key={plan.id}
+                        className={`rounded-xl border p-4 relative ${
+                          isCurrent
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border bg-card hover:border-primary/40 transition-colors'
+                        }`}
+                      >
+                        {isCurrent && (
+                          <span className="absolute top-3 right-3 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                            Aktif
+                          </span>
+                        )}
+                        {plan.badge && !isCurrent && (
+                          <span className="absolute top-3 right-3 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                            {plan.badge}
+                          </span>
+                        )}
+                        <p className="font-semibold text-foreground text-sm">{plan.name}</p>
+                        <p className="text-lg font-bold text-foreground mt-0.5">
+                          {plan.priceLabel}<span className="text-xs font-normal text-muted-foreground">{plan.period}</span>
+                        </p>
+                        <ul className="mt-2 space-y-1">
+                          {plan.features.slice(0, 4).map(f => (
+                            <li key={f} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <span className="text-primary">✓</span>{f}
+                            </li>
+                          ))}
+                        </ul>
+                        {!isCurrent && (
+                          <a
+                            href={`mailto:admin@kasai.app?subject=Upgrade Plan ke ${plan.name}&body=Halo, saya ingin upgrade ke plan ${plan.name} (${plan.priceLabel}${plan.period}).`}
+                            className="mt-3 block"
+                          >
+                            <Button size="sm" variant={isUpgrade ? 'default' : 'outline'} className="w-full h-8 text-xs">
+                              {isUpgrade ? '↑ Upgrade' : '↓ Downgrade'} ke {plan.name.replace('Personal ', '')}
+                            </Button>
+                          </a>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Business plans */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Business — Multi-Bisnis</p>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {PLAN_GROUPS.business.map(plan => {
+                    const isCurrent = user.plan === plan.id
+                    return (
+                      <div
+                        key={plan.id}
+                        className={`rounded-xl border p-4 relative ${
+                          isCurrent
+                            ? 'border-primary bg-primary/5'
+                            : plan.highlight
+                            ? 'border-primary/50 bg-card shadow-md'
+                            : 'border-border bg-card hover:border-primary/40 transition-colors'
+                        }`}
+                      >
+                        {isCurrent && (
+                          <span className="absolute top-3 right-3 text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                            Aktif
+                          </span>
+                        )}
+                        {plan.badge && !isCurrent && (
+                          <span className="absolute top-3 right-3 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                            {plan.badge}
+                          </span>
+                        )}
+                        <p className="font-semibold text-foreground text-sm">{plan.name}</p>
+                        <p className="text-lg font-bold text-foreground mt-0.5">
+                          {plan.priceLabel}<span className="text-xs font-normal text-muted-foreground">{plan.period}</span>
+                        </p>
+                        <ul className="mt-2 space-y-1">
+                          {plan.features.slice(0, 4).map(f => (
+                            <li key={f} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <span className="text-primary">✓</span>{f}
+                            </li>
+                          ))}
+                        </ul>
+                        {!isCurrent && (
+                          <a
+                            href={`mailto:admin@kasai.app?subject=Upgrade Plan ke ${plan.name}&body=Halo, saya ingin upgrade ke plan ${plan.name} (${plan.priceLabel}${plan.period}).`}
+                            className="mt-3 block"
+                          >
+                            <Button size="sm" variant="default" className="w-full h-8 text-xs">
+                              ↑ Upgrade ke {plan.name.replace('Business ', '')}
+                            </Button>
+                          </a>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl bg-muted/50 border border-border p-4 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground mb-1">💡 Cara Upgrade</p>
+                <p>Klik tombol upgrade di atas untuk mengirim email ke tim KasAI, atau hubungi kami langsung. Plan akan diaktifkan dalam 1×24 jam setelah konfirmasi pembayaran.</p>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

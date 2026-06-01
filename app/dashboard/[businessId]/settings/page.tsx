@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getBusiness, getBusinessCategories, getBusinessProducts, getCurrentUser } from '@/app/actions/business'
+import { getTransactionCountThisMonth } from '@/app/actions/transaction'
 import { SettingsPanel } from '@/components/settings-panel'
 
 export const metadata = { title: 'Pengaturan — KasAI' }
@@ -18,11 +19,12 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
   if (!session?.user) redirect('/sign-in')
 
   try {
-    const [business, categories, products, user] = await Promise.all([
+    const [business, categories, products, user, txThisMonth] = await Promise.all([
       getBusiness(businessId),
       getBusinessCategories(businessId),
       getBusinessProducts(businessId),
       getCurrentUser(),
+      getTransactionCountThisMonth(businessId).catch(() => 0),
     ])
 
     return (
@@ -30,10 +32,16 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Pengaturan</h1>
           <p className="text-muted-foreground mt-1">
-            Kelola profil, bisnis, kategori, dan integrasi Telegram
+            Kelola profil, bisnis, kategori, integrasi Telegram, dan plan
           </p>
         </div>
-        <SettingsPanel business={business} user={user} categories={categories} products={products} />
+        <SettingsPanel
+          business={business}
+          user={user}
+          categories={categories}
+          products={products}
+          txThisMonth={txThisMonth}
+        />
       </div>
     )
   } catch (err) {

@@ -22,6 +22,8 @@ export const user = pgTable('user', {
   currency: text('currency').default('USD'),
   timezone: text('timezone').default('UTC'),
   accountType: text('accountType').default('personal'), // 'personal' or 'business'
+  plan: text('plan').default('free'),                   // plan id from PLANS
+  planExpiresAt: timestamp('planExpiresAt'),             // null = no expiry (lifetime/manual)
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
