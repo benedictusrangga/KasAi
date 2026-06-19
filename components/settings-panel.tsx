@@ -22,6 +22,7 @@ import {
   updateBusiness,
   updateUserProfile,
 } from '@/app/actions/business'
+import { saveFeatureConfig } from '@/app/actions/features'
 import { PLANS, PLAN_GROUPS, getPlan, type PlanId } from '@/lib/plan-limits'
 import { PERSONA_LIST, getPersona, type PersonaId } from '@/lib/ai-personas'
 
@@ -50,6 +51,7 @@ const BUSINESS_TYPES = [
 const TABS = [
   { id: 'profile',   label: '👤 Profil & Telegram' },
   { id: 'ai',        label: '✦ AI Persona' },
+  { id: 'features',  label: '⚙️ Fitur Aktif' },
   { id: 'business',  label: '🏪 Info Bisnis' },
   { id: 'categories',label: '🏷️ Kategori' },
   { id: 'products',  label: '📦 Produk & Layanan' },
@@ -72,13 +74,30 @@ type Props = {
   categories: Array<{ id: string; name: string; type: string; description?: string | null }>
   products: Array<{ id: string; name: string; unit?: string | null; price?: string | null; description?: string | null }>
   txThisMonth?: number
+  featureConfig?: {
+    enableInventory: boolean
+    enablePayables: boolean
+    enableReceivables: boolean
+    enableBudget: boolean
+    enableGoals: boolean
+    enableTelegram: boolean
+    enableTeam: boolean
+    goalContributionAsExpense: boolean
+  }
 }
 
-export function SettingsPanel({ business, user, categories, products, txThisMonth = 0 }: Props) {
+export function SettingsPanel({ business, user, categories, products, txThisMonth = 0, featureConfig: initialFeatureConfig }: Props) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('profile')
   const [isSaving, setIsSaving] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+  const defaultFeatureConfig = {
+    enableInventory: false, enablePayables: true, enableReceivables: true,
+    enableBudget: true, enableGoals: true, enableTelegram: true, enableTeam: false,
+    goalContributionAsExpense: false,
+  }
+  const [featureConfig, setFeatureConfig] = useState(initialFeatureConfig ?? defaultFeatureConfig)
 
   const [profile, setProfile] = useState({
     name: user.name || '',
@@ -394,6 +413,134 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
             className="h-11"
           >
             {isSaving ? 'Menyimpan...' : `Simpan Persona — ${getPersona(profile.aiPersona).emoji} ${getPersona(profile.aiPersona).name}`}
+          </Button>
+        </div>
+      )}
+
+      {/* Features config tab */}
+      {activeTab === 'features' && (
+        <div className="max-w-xl space-y-5">
+          <div className="rounded-2xl border border-border bg-card p-5 mb-2">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⚙️</span>
+              <div>
+                <p className="font-semibold text-foreground text-sm mb-1">Aktifkan Fitur yang Anda Butuhkan</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Matikan fitur yang tidak Anda gunakan agar tampilan lebih bersih dan fokus.
+                  Fitur yang dinonaktifkan tidak akan muncul di menu navigasi.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {[
+            {
+              key: 'enableGoals',
+              label: '🎯 Target & Goals',
+              desc: 'Tetapkan target tabungan dan pantau progressnya',
+            },
+            {
+              key: 'enableBudget',
+              label: '💰 Budget Pengeluaran',
+              desc: 'Batasi pengeluaran per kategori dengan notifikasi otomatis',
+            },
+            {
+              key: 'enablePayables',
+              label: '💸 Hutang & Piutang',
+              desc: 'Catat siapa yang berhutang kepada Anda dan sebaliknya',
+            },
+            {
+              key: 'enableInventory',
+              label: '📦 Inventaris Stok',
+              desc: 'Pantau stok barang masuk/keluar dan dapat alert stok menipis',
+            },
+            {
+              key: 'enableTelegram',
+              label: '💬 Integrasi Telegram',
+              desc: 'Catat transaksi langsung dari Telegram bot',
+            },
+            {
+              key: 'enableTeam',
+              label: '👥 Fitur Tim (Multi-User)',
+              desc: 'Undang admin atau viewer untuk membantu mencatat transaksi',
+            },
+          ].map((feat) => {
+            const isOn = featureConfig[feat.key as keyof typeof featureConfig]
+            return (
+              <div key={feat.key}>
+                <div
+                  className={`rounded-xl border p-4 flex items-start justify-between gap-4 cursor-pointer transition-all ${
+                    isOn ? 'border-primary/40 bg-primary/5' : 'border-border bg-card opacity-70'
+                  }`}
+                  onClick={() => setFeatureConfig({ ...featureConfig, [feat.key]: !isOn })}
+                >
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${isOn ? 'text-foreground' : 'text-muted-foreground'}`}>{feat.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{feat.desc}</p>
+                  </div>
+                  <div className={`shrink-0 h-6 w-11 rounded-full transition-colors flex items-center px-0.5 ${
+                    isOn ? 'bg-primary' : 'bg-muted'
+                  }`}>
+                    <div className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      isOn ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </div>
+                </div>
+
+                {/* Sub-option: goalContributionAsExpense (muncul jika enableGoals aktif) */}
+                {feat.key === 'enableGoals' && isOn && (
+                  <div
+                    className={`ml-5 mt-1.5 rounded-xl border p-3.5 flex items-start justify-between gap-3 cursor-pointer transition-all ${
+                      featureConfig.goalContributionAsExpense
+                        ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700'
+                        : 'border-border bg-muted/30'
+                    }`}
+                    onClick={() => setFeatureConfig({
+                      ...featureConfig,
+                      goalContributionAsExpense: !featureConfig.goalContributionAsExpense
+                    })}
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        📊 Kontribusi goal = pengeluaran
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                        {featureConfig.goalContributionAsExpense
+                          ? 'Aktif — setiap tabungan ke goal juga tercatat sebagai pengeluaran di laporan'
+                          : 'Non-aktif — tabungan ke goal terpisah dari laporan keuangan (default)'
+                        }
+                      </p>
+                    </div>
+                    <div className={`shrink-0 h-5 w-9 rounded-full transition-colors flex items-center px-0.5 ${
+                      featureConfig.goalContributionAsExpense ? 'bg-amber-400' : 'bg-muted'
+                    }`}>
+                      <div className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                        featureConfig.goalContributionAsExpense ? 'translate-x-4' : 'translate-x-0'
+                      }`} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          <Button
+            onClick={async () => {
+              setIsSaving(true)
+              try {
+                await saveFeatureConfig(business.id, featureConfig)
+                showStatus('success', 'Konfigurasi fitur disimpan. Refresh halaman untuk melihat perubahan menu.')
+                router.refresh()
+              } catch {
+                showStatus('error', 'Gagal menyimpan konfigurasi.')
+              } finally {
+                setIsSaving(false)
+              }
+            }}
+            disabled={isSaving}
+            className="h-11"
+          >
+            {isSaving ? 'Menyimpan...' : 'Simpan Konfigurasi Fitur'}
           </Button>
         </div>
       )}

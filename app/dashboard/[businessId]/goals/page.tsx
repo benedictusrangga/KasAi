@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getBusiness } from '@/app/actions/business'
 import { getGoals, getBudgets } from '@/app/actions/goals'
 import { getBusinessTransactions } from '@/app/actions/transaction'
+import { getFeatureConfig } from '@/app/actions/features'
 import { GoalsPanel } from '@/components/goals-panel'
 
 export const metadata = { title: 'Goals & Budget — KasAI' }
@@ -20,11 +21,12 @@ export default async function GoalsPage({ params }: { params: Promise<{ business
   if (!session?.user) redirect('/sign-in')
 
   try {
-    const [business, goals, budgets, transactions] = await Promise.all([
+    const [business, goals, budgets, transactions, featureConfig] = await Promise.all([
       getBusiness(businessId),
       getGoals(businessId).catch(() => []),
       getBudgets(businessId).catch(() => []),
       getBusinessTransactions(businessId).catch(() => []),
+      getFeatureConfig(businessId).catch(() => null),
     ])
 
     // Hitung pengeluaran per kategori bulan ini
@@ -56,6 +58,7 @@ export default async function GoalsPage({ params }: { params: Promise<{ business
           goals={goals}
           budgets={budgets}
           spendingByCategory={spendingByCategory}
+          goalContributionAsExpense={featureConfig?.goalContributionAsExpense ?? false}
         />
       </div>
     )

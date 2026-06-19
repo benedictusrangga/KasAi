@@ -20,7 +20,7 @@ export function LandingSocialProof() {
   const stats = [
     { value: 'Beta',    label: 'Early Access' },
     { value: 'Gratis',  label: 'Mulai Sekarang' },
-    { value: '99.9%',   label: 'Uptime' },
+    { value: '18+',     label: 'Fitur Built-in' },
     { value: '< 2 dtk', label: 'Respons AI' },
   ]
 

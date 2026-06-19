@@ -11,9 +11,11 @@ export function LandingTelegram() {
 
   const messages = [
     { from: 'user', text: 'beli bahan baku kopi 450rb', time: '09:14' },
-    { from: 'bot',  text: '✅ Dicatat untuk Kopi Nusantara\n📉 Pengeluaran: Rp 450.000\n📂 Kategori: Bahan Baku', time: '09:14' },
-    { from: 'user', text: 'terima pembayaran catering 1.8jt', time: '11:32' },
-    { from: 'bot',  text: '✅ Dicatat untuk Kopi Nusantara\n📈 Pemasukan: Rp 1.800.000\n📂 Kategori: Penjualan', time: '11:32' },
+    { from: 'bot',  text: '✅ Dicatat!\n📉 Pengeluaran: Rp 450.000\n📂 Bahan Baku\n\n_Ketik "undo" jika salah_', time: '09:14' },
+    { from: 'user', text: 'eh salah, harusnya 500rb', time: '09:15' },
+    { from: 'bot',  text: '✅ Dikoreksi!\nRp 450.000 → Rp 500.000', time: '09:15' },
+    { from: 'user', text: '/tabung 1 500000', time: '11:32' },
+    { from: 'bot',  text: '🎯 Tabungan Motor\n███████░░░ 70%\nTerkumpul: Rp 7jt / Rp 10jt\nSisa: Rp 3jt', time: '11:32' },
     { from: 'user', text: '/pdf', time: '17:00' },
     { from: 'bot',  isPdf: true, time: '17:00' },
   ]
@@ -60,10 +62,11 @@ export function LandingTelegram() {
 
             <div className="space-y-5 mb-10">
               {[
-                { icon: '🎯', title: 'Kenali Anda Otomatis', desc: 'Bot mengenali Anda dari Telegram ID — tidak perlu login setiap saat.' },
-                { icon: '🧠', title: 'Pahami Konteks Bisnis', desc: 'AI tahu jenis bisnis Anda dan mengkategorikan transaksi secara tepat.' },
+                { icon: '✏️', title: 'Edit & Undo Langsung dari Chat', desc: 'Salah input? Ketik "eh salah, harusnya 9.5 juta" — AI langsung koreksi. Atau "undo" untuk hapus transaksi terakhir.' },
+                { icon: '🎯', title: 'Kelola Goals via Telegram', desc: 'Buat target tabungan, cek progress dengan /goals, dan setor dengan /tabung. Semua langsung dari chat.' },
+                { icon: '🧠', title: 'AI Pahami Konteks Bisnis', desc: 'AI tahu fitur apa yang Anda aktifkan, saldo, hutang, piutang, dan stok. Jawaban selalu relevan.' },
                 { icon: '📄', title: 'Kirim Laporan PDF', desc: 'Ketik /pdf dan laporan keuangan dikirim langsung ke chat Anda.' },
-                { icon: '🔔', title: 'Notifikasi Budget', desc: 'Dapat peringatan otomatis saat pengeluaran mendekati batas budget.' },
+                { icon: '🔔', title: 'Notifikasi Budget & Stok', desc: 'Dapat peringatan otomatis saat pengeluaran mendekati batas atau stok menipis.' },
               ].map((item) => (
                 <div key={item.title} className="flex items-start gap-4 group">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base transition-transform duration-200 group-hover:scale-110"

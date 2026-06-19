@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getBusiness, getBusinessCategories, getBusinessProducts, getCurrentUser } from '@/app/actions/business'
 import { getTransactionCountThisMonth } from '@/app/actions/transaction'
 import { getBusinessAccess } from '@/app/actions/members'
+import { getFeatureConfig } from '@/app/actions/features'
 import { SettingsPanel } from '@/components/settings-panel'
 import MembersPanel from '@/components/members-panel'
 
@@ -21,13 +22,14 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
   if (!session?.user) redirect('/sign-in')
 
   try {
-    const [biz, categories, products, user, txThisMonth, access] = await Promise.all([
+    const [biz, categories, products, user, txThisMonth, access, featureConfig] = await Promise.all([
       getBusiness(businessId),
       getBusinessCategories(businessId),
       getBusinessProducts(businessId),
       getCurrentUser(),
       getTransactionCountThisMonth(businessId).catch(() => 0),
       getBusinessAccess(businessId, session.user.id),
+      getFeatureConfig(businessId).catch(() => null),
     ])
 
     return (
@@ -35,7 +37,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
         <div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Pengaturan</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Kelola profil, bisnis, kategori, integrasi Telegram, dan plan
+            Kelola profil, bisnis, kategori, integrasi Telegram, fitur aktif, dan plan
           </p>
         </div>
 
@@ -45,9 +47,10 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
           categories={categories}
           products={products}
           txThisMonth={txThisMonth}
+          featureConfig={featureConfig ?? undefined}
         />
 
-        {/* Multi-user section — tampil untuk semua (owner lihat full, member lihat info) */}
+        {/* Multi-user section */}
         <div className="rounded-2xl border border-border bg-card p-6">
           <MembersPanel
             businessId={businessId}

@@ -26,6 +26,7 @@ export const user = pgTable('user', {
   plan: text('plan').default('free'),                   // plan id from PLANS
   planExpiresAt: timestamp('planExpiresAt'),             // null = no expiry (lifetime/manual)
   aiPersona: text('aiPersona').default('professional'), // AI personality: professional | sahabat | coach | santai
+  activeTelegramBusinessId: text('activeTelegramBusinessId'), // bisnis aktif untuk Telegram bot
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
@@ -163,6 +164,7 @@ export const transaction = pgTable('transaction', {
   transaction_type: transactionTypeEnum('transaction_type').notNull().default('expense'),
   description: text('description').notNull(),
   categoryId: text('categoryId').references(() => category.id, { onDelete: 'set null' }),
+  categoryName: text('categoryName'), // human-readable nama kategori (custom atau dari enum)
   source: expenseSourceEnum('source').notNull().default('manual'),
   receipt_url: text('receipt_url'),
   tags: text('tags').array(),
@@ -234,6 +236,89 @@ export const budget = pgTable('budget', {
   category: text('category').notNull(),
   amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
   period: text('period').notNull().default('monthly'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+// ── Hutang (Payable — kita yang berhutang ke orang lain) ──────────────────────
+export const payable = pgTable('payable', {
+  id: text('id').primaryKey(),
+  businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  contactName: text('contactName').notNull(),
+  contactPhone: text('contactPhone'),
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  paidAmount: decimal('paidAmount', { precision: 12, scale: 2 }).notNull().default('0'),
+  description: text('description').notNull(),
+  dueDate: timestamp('dueDate'),
+  status: text('status').notNull().default('unpaid'), // unpaid | partial | paid
+  notes: text('notes'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+// ── Piutang (Receivable — orang lain berhutang ke kita) ───────────────────────
+export const receivable = pgTable('receivable', {
+  id: text('id').primaryKey(),
+  businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  contactName: text('contactName').notNull(),
+  contactPhone: text('contactPhone'),
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  paidAmount: decimal('paidAmount', { precision: 12, scale: 2 }).notNull().default('0'),
+  description: text('description').notNull(),
+  dueDate: timestamp('dueDate'),
+  status: text('status').notNull().default('unpaid'), // unpaid | partial | paid
+  notes: text('notes'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+// ── Inventaris ────────────────────────────────────────────────────────────────
+export const inventoryItem = pgTable('inventory_item', {
+  id: text('id').primaryKey(),
+  businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  sku: text('sku'),
+  unit: text('unit').notNull().default('pcs'),
+  currentStock: decimal('currentStock', { precision: 12, scale: 2 }).notNull().default('0'),
+  minStock: decimal('minStock', { precision: 12, scale: 2 }).default('0'),
+  buyPrice: decimal('buyPrice', { precision: 12, scale: 2 }),
+  sellPrice: decimal('sellPrice', { precision: 12, scale: 2 }),
+  description: text('description'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const inventoryLog = pgTable('inventory_log', {
+  id: text('id').primaryKey(),
+  businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
+  itemId: text('itemId').notNull().references(() => inventoryItem.id, { onDelete: 'cascade' }),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), // 'in' | 'out' | 'adjustment'
+  quantity: decimal('quantity', { precision: 12, scale: 2 }).notNull(),
+  note: text('note'),
+  transactionId: text('transactionId').references(() => transaction.id, { onDelete: 'set null' }),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+})
+
+// ── Konfigurasi fitur per bisnis ──────────────────────────────────────────────
+export const userFeatureConfig = pgTable('user_feature_config', {
+  id: text('id').primaryKey(),
+  businessId: text('businessId').notNull().unique().references(() => business.id, { onDelete: 'cascade' }),
+  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  enableInventory: boolean('enableInventory').notNull().default(false),
+  enablePayables: boolean('enablePayables').notNull().default(false),
+  enableReceivables: boolean('enableReceivables').notNull().default(false),
+  enableBudget: boolean('enableBudget').notNull().default(true),
+  enableGoals: boolean('enableGoals').notNull().default(true),
+  enableTelegram: boolean('enableTelegram').notNull().default(true),
+  enableTeam: boolean('enableTeam').notNull().default(false),
+  // Apakah kontribusi goal dihitung sebagai pengeluaran di laporan?
+  // true  = kontribusi goal SEKALIGUS mencatat transaksi expense ("Tabungan Motor")
+  // false = goal terpisah dari catatan transaksi (default)
+  goalContributionAsExpense: boolean('goalContributionAsExpense').notNull().default(false),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })

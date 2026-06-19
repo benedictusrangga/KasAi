@@ -19,8 +19,40 @@ export function LandingFeatures() {
         </svg>
       ),
       title: 'Catat Transaksi via Telegram',
-      desc: 'Kirim pesan seperti "beli gula 50rb" atau "terima bayaran 1.2jt" — AI langsung mencatat, mengkategorikan, dan mengkonfirmasi. Semua tercatat langsung dari Telegram.',
-      tags: ['Bahasa natural Indonesia', 'Konfirmasi instan', 'Pemasukan & pengeluaran', 'Foto struk otomatis'],
+      desc: 'Kirim pesan seperti "beli gula 50rb" atau "terima bayaran 1.2jt" — AI langsung mencatat, mengkategorikan, dan mengkonfirmasi. Multi-bisnis support dengan /switch untuk ganti bisnis aktif.',
+      tags: ['Bahasa natural Indonesia', 'Multi-bisnis', 'Foto struk otomatis', '/switch untuk ganti bisnis'],
+    },
+    {
+      id: 'payables',
+      span: '',
+      accent: { bg: 'rgba(239,68,68,0.07)', border: 'rgba(239,68,68,0.18)', text: '#fca5a5', glow: 'rgba(239,68,68,0.1)' },
+      accentLight: { bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.15)', text: '#dc2626', glow: 'rgba(239,68,68,0.07)' },
+      badge: 'Baru!',
+      icon: (color: string) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      title: 'Hutang & Piutang',
+      desc: 'Catat siapa yang berhutang ke Anda dan kepada siapa Anda berhutang. Partial payment, notifikasi jatuh tempo, dan track progress dengan progress bar visual. Alert otomatis untuk tagihan terlambat.',
+      tags: ['Cicilan/partial payment', 'Alert jatuh tempo', 'Track overdue', 'Progress bar'],
+    },
+    {
+      id: 'inventory',
+      span: '',
+      accent: { bg: 'rgba(245,158,11,0.07)', border: 'rgba(245,158,11,0.18)', text: '#fcd34d', glow: 'rgba(245,158,11,0.1)' },
+      accentLight: { bg: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.15)', text: '#d97706', glow: 'rgba(245,158,11,0.07)' },
+      badge: 'Baru!',
+      icon: (color: string) => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <line x1="12" y1="22.08" x2="12" y2="12" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      title: 'Inventaris Stok',
+      desc: 'Kelola stok barang masuk/keluar/adjustment. Alert otomatis saat stok menipis. Riwayat log lengkap setiap pergerakan stok dengan timestamp dan user yang input.',
+      tags: ['Stock in/out/adjustment', 'Alert stok menipis', 'History log', 'Hitung margin'],
     },
     {
       id: 'scan',
@@ -57,12 +89,12 @@ export function LandingFeatures() {
       accentLight: { bg: 'rgba(16,185,129,0.06)', border: 'rgba(16,185,129,0.15)', text: '#059669', glow: 'rgba(16,185,129,0.07)' },
       icon: (color: string) => (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2a10 10 0 110 20A10 10 0 0112 2z" stroke={color} strokeWidth="1.5"/>
-          <path d="M12 8v4l3 3" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
-      title: 'AI Financial Advisor',
-      desc: 'Tanya langsung: "Bulan ini saya boros di mana?" atau "Kapan bisnis saya paling ramai?" — AI menjawab berdasarkan data nyata Anda.',
+      title: 'AI Context-Aware + Edit/Undo',
+      desc: 'AI tahu semua fitur yang Anda aktifkan dan data real-time bisnis Anda. Salah input? Cukup ketik "eh salah, harusnya 9.5 juta" — AI langsung koreksi. Atau "undo" untuk hapus transaksi terakhir. Pilih dari 4 persona AI.',
+      tags: ['Context-aware', 'Edit via chat', 'Undo 1-tap', '4 AI personas'],
     },
     {
       id: 'report',
@@ -74,8 +106,9 @@ export function LandingFeatures() {
           <path d="M18 20V10M12 20V4M6 20v-6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
-      title: 'Laporan Real-time',
-      desc: 'Dashboard dengan grafik pemasukan, pengeluaran, laba bersih, dan breakdown per kategori. Export PDF langsung dari Telegram.',
+      title: 'Laporan dengan Filter Periode',
+      desc: 'Dashboard real-time dengan filter per bulan (weekly breakdown), per tahun (12 bulan), atau semua waktu. Shortcut "Bulan ini", "Bulan lalu", "Tahun ini". Export PDF langsung dari Telegram dengan /pdf.',
+      tags: ['Filter periode', 'Weekly breakdown', 'Export PDF via /pdf'],
     },
     {
       id: 'multi',
@@ -88,8 +121,9 @@ export function LandingFeatures() {
           <path d="M9 22V12h6v10" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
-      title: 'Multi-Bisnis',
-      desc: 'Kelola beberapa bisnis dari satu akun. Setiap bisnis punya dashboard, laporan, kategori, dan produk sendiri yang terpisah.',
+      title: 'Personal vs Bisnis + Feature Toggle',
+      desc: 'Akun Personal untuk keuangan pribadi (pengeluaran, tabungan, budget). Akun Bisnis untuk UMKM dengan fitur lengkap. Setiap bisnis bisa on/off fitur sendiri — inventaris, hutang-piutang, team, dll. Sidebar otomatis menyesuaikan.',
+      tags: ['Personal & Bisnis', 'Toggle per fitur', 'Sidebar dinamis'],
     },
     {
       id: 'team',
@@ -136,8 +170,9 @@ export function LandingFeatures() {
           <circle cx="12" cy="12" r="2" fill={color}/>
         </svg>
       ),
-      title: 'Goals & Budget',
-      desc: 'Tetapkan target keuangan dan batas anggaran per kategori. Dapat notifikasi otomatis via Telegram dan peringatan langsung di dashboard saat budget hampir habis.',
+      title: 'Goals & Tabungan via Telegram',
+      desc: 'Buat target tabungan, pantau progress, dan tambah kontribusi — langsung dari Telegram. Ketik "buat target motor 10jt" atau "/tabung 1 500rb". Bisa pilih apakah tabungan dihitung sebagai pengeluaran atau terpisah di laporan.',
+      tags: ['/goals — lihat target', '/tabung — setor tabungan', 'Progress real-time', 'Atur di laporan'],
     },
     {
       id: 'pdf',

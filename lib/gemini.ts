@@ -199,11 +199,40 @@ export async function chatWithAI(
       recentTx: Array<{ type: string; desc: string; amount: number; date: string }>
       budgetStatus?: Array<{ category: string; budget: number; spent: number; percentage: number }>
       activeGoals?: Array<{ title: string; target: number; current: number; percentage: number; deadline: string | null }>
+      payablesSummary?: { totalUnpaid: number; totalAmount: number; overdue: number } | null
+      receivablesSummary?: { totalUnpaid: number; totalAmount: number; overdue: number } | null
+      inventorySummary?: { totalItems: number; lowStock: number; totalValue: number } | null
+      featureConfig?: {
+        enableInventory: boolean
+        enablePayables: boolean
+        enableReceivables: boolean
+        enableBudget: boolean
+        enableGoals: boolean
+        enableTelegram: boolean
+        enableTeam: boolean
+      }
     }
   }
 ): Promise<string> {
   const fs = context?.financialSummary
+  const fc = fs?.featureConfig
   const isPersonal = context?.accountType === 'personal'
+
+  // Feature availability context
+  const featuresInfo = fc ? `
+FITUR YANG AKTIF:
+${fc.enableInventory ? '✓ Inventaris (kelola stok barang)' : ''}
+${fc.enablePayables || fc.enableReceivables ? '✓ Hutang & Piutang' : ''}
+${fc.enableGoals ? '✓ Goals/Target Finansial' : ''}
+${fc.enableBudget ? '✓ Budget Management' : ''}
+${fc.enableTeam ? '✓ Team Collaboration' : ''}
+
+${!fc.enableInventory ? '✗ Inventaris tidak aktif — user bisa aktifkan di Settings' : ''}
+${!fc.enablePayables && !fc.enableReceivables ? '✗ Hutang-Piutang tidak aktif — user bisa aktifkan di Settings' : ''}
+${!fc.enableGoals ? '✗ Goals tidak aktif' : ''}
+
+PENTING: Jika user bertanya tentang fitur yang tidak aktif, ingatkan bahwa fitur tersebut perlu diaktifkan dulu di Settings → Fitur Aktif.
+` : ''
 
   // Bangun ringkasan keuangan yang ringkas (hemat token)
   const financialContext = fs ? `
@@ -216,7 +245,10 @@ DATA KEUANGAN (gunakan untuk menjawab pertanyaan):
 ${fs.topExpenses.length > 0 ? `- Pengeluaran terbesar: ${fs.topExpenses.map(e => `${e.desc} (Rp ${e.amount.toLocaleString('id-ID')})`).join(', ')}` : ''}
 ${fs.recentTx.length > 0 ? `- 5 terakhir: ${fs.recentTx.map(t => `${t.type === 'income' ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')} ${t.desc} (${t.date})`).join(' | ')}` : ''}
 ${fs.activeGoals && fs.activeGoals.length > 0 ? `- TARGET AKTIF: ${fs.activeGoals.map(g => `"${g.title}" ${g.percentage}% (${g.current.toLocaleString('id-ID')}/${g.target.toLocaleString('id-ID')})${g.deadline ? ` deadline ${g.deadline}` : ''}`).join(', ')}` : ''}
-${fs.budgetStatus && fs.budgetStatus.length > 0 ? `- BUDGET BULAN INI: ${fs.budgetStatus.map(b => `${b.category} ${b.percentage}% (Rp ${b.spent.toLocaleString('id-ID')} dari Rp ${b.budget.toLocaleString('id-ID')})`).join(', ')}` : ''}` : ''
+${fs.budgetStatus && fs.budgetStatus.length > 0 ? `- BUDGET BULAN INI: ${fs.budgetStatus.map(b => `${b.category} ${b.percentage}% (Rp ${b.spent.toLocaleString('id-ID')} dari Rp ${b.budget.toLocaleString('id-ID')})`).join(', ')}` : ''}
+${fs.payablesSummary ? `- HUTANG: ${fs.payablesSummary.totalUnpaid} tagihan belum lunas, total Rp ${fs.payablesSummary.totalAmount.toLocaleString('id-ID')}${fs.payablesSummary.overdue > 0 ? ` (${fs.payablesSummary.overdue} terlambat!)` : ''}` : ''}
+${fs.receivablesSummary ? `- PIUTANG: ${fs.receivablesSummary.totalUnpaid} tagihan belum lunas, total Rp ${fs.receivablesSummary.totalAmount.toLocaleString('id-ID')}${fs.receivablesSummary.overdue > 0 ? ` (${fs.receivablesSummary.overdue} terlambat!)` : ''}` : ''}
+${fs.inventorySummary ? `- INVENTARIS: ${fs.inventorySummary.totalItems} jenis barang, ${fs.inventorySummary.lowStock} stok menipis, nilai total ~Rp ${fs.inventorySummary.totalValue.toLocaleString('id-ID')}` : ''}` : ''
 
   const personalContext = isPersonal
     ? `Ini adalah akun KEUANGAN PERSONAL (bukan bisnis). Gunakan istilah yang sesuai:
@@ -237,18 +269,28 @@ ${fs.budgetStatus && fs.budgetStatus.length > 0 ? `- BUDGET BULAN INI: ${fs.budg
   const baseInstruction = `Kamu adalah asisten AI keuangan KasAI untuk UMKM dan personal Indonesia.
 Nama bisnis/pengguna: ${context?.businessName || 'Pengguna'}
 ${personalContext}
+${featuresInfo}
 ${financialContext}
 
 Tugasmu:
 - Jawab pertanyaan keuangan berdasarkan DATA DI ATAS secara akurat
-- Beri insight dan saran yang relevan dengan tipe akun
+- Beri insight dan saran yang relevan dengan tipe akun dan fitur yang aktif
 - Jika ditanya nominal → jawab langsung dari data, jangan tanya balik
 - Jika belum ada data → bilang "belum ada transaksi tercatat"
+- Jika user tanya fitur yang tidak aktif → ingatkan untuk aktifkan di Settings
+- Jika diminta bantuan catat transaksi/hutang/stok → arahkan ke halaman yang sesuai
+
+KEMAMPUAN AI (sebutkan jika relevan):
+- Catat transaksi: user bisa langsung ketik "beli kopi 50rb" dan AI akan bantu ekstrak
+- Analisis spending: AI bisa kasih insight pola pengeluaran
+- Reminder jatuh tempo: AI bisa ingatkan hutang/piutang yang overdue
+- Saran penghematan: AI bisa kasih tips berdasarkan data user
 
 Format jawaban:
 - Bahasa Indonesia, maks 3-4 kalimat untuk jawaban sederhana
 - Gunakan format Rp X.XXX.XXX
-- Boleh pakai emoji secukupnya untuk keterbacaan`
+- Boleh pakai emoji secukupnya untuk keterbacaan
+- Jika user minta action (catat, ubah, hapus) → arahkan ke UI yang sesuai atau konfirmasi dulu`
 
   // Gabungkan persona + base instruction
   const systemInstruction = `${persona.systemPrompt}\n\n${baseInstruction}`

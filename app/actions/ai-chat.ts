@@ -2,12 +2,24 @@
 
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { aiChat, business, transaction, user, goal, budget } from '@/lib/db/schema'
+import { aiChat, business, transaction, user, goal, budget, payable, receivable, inventoryItem } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
 import { chatWithAI, extractExpensesFromText, extractExpensesFromImage } from '@/lib/gemini'
+import { getFeatureConfig } from './features'
+import {
+  getOrCreateSession,
+  setPendingAction as storeSetPending,
+  getPendingAction as storeGetPending,
+  clearPendingAction as storeClearPending,
+  addRecentOperation,
+  getLastOperation,
+} from '@/lib/conversation-store'
+import { parseUserIntent, generateConfirmationMessage, generateSuccessMessage } from '@/lib/ai-actions'
+import { executeAIAction } from '@/lib/ai-action-executor'
+import { parseEditIntent, executeEdit, executeUndo, formatEditSuccessMessage } from '@/lib/ai-edit-handler'
 
 async function getUserId() {
   const h = await headers()
@@ -42,17 +54,37 @@ export async function getAiChat(chatId: string) {
 }
 
 async function buildFinancialSummary(businessId: string, userId: string) {
-  const [allTxns, goals, budgets] = await Promise.all([
+  // Get feature config untuk tahu fitur apa yang aktif
+  const featureConfig = await getFeatureConfig(businessId).catch(() => ({
+    enableInventory: false,
+    enablePayables: false,
+    enableReceivables: false,
+    enableBudget: true,
+    enableGoals: true,
+    enableTelegram: true,
+    enableTeam: false,
+  }))
+
+  const [allTxns, goals, budgets, payables, receivables, inventory] = await Promise.all([
     db.query.transaction.findMany({
       where: and(eq(transaction.businessId, businessId), eq(transaction.userId, userId)),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
     }),
-    db.query.goal.findMany({
+    featureConfig.enableGoals ? db.query.goal.findMany({
       where: and(eq(goal.businessId, businessId), eq(goal.userId, userId)),
-    }),
-    db.query.budget.findMany({
+    }) : Promise.resolve([]),
+    featureConfig.enableBudget ? db.query.budget.findMany({
       where: and(eq(budget.businessId, businessId), eq(budget.userId, userId)),
-    }),
+    }) : Promise.resolve([]),
+    featureConfig.enablePayables ? db.query.payable.findMany({
+      where: eq(payable.businessId, businessId),
+    }) : Promise.resolve([]),
+    featureConfig.enableReceivables ? db.query.receivable.findMany({
+      where: eq(receivable.businessId, businessId),
+    }) : Promise.resolve([]),
+    featureConfig.enableInventory ? db.query.inventoryItem.findMany({
+      where: eq(inventoryItem.businessId, businessId),
+    }) : Promise.resolve([]),
   ])
 
   const now = new Date()
@@ -82,7 +114,7 @@ async function buildFinancialSummary(businessId: string, userId: string) {
   // Budget status bulan ini
   const spendingByCategory: Record<string, number> = {}
   thisMonth.filter((t) => t.transaction_type === 'expense').forEach((t) => {
-    const cat = t.categoryId || 'other'
+    const cat = t.categoryName || t.categoryId || 'other'
     spendingByCategory[cat] = (spendingByCategory[cat] || 0) + parseFloat(t.amount)
   })
 
@@ -101,10 +133,39 @@ async function buildFinancialSummary(businessId: string, userId: string) {
     deadline: g.deadline ? new Date(g.deadline).toLocaleDateString('id-ID') : null,
   }))
 
+  // Hutang & Piutang summary
+  const payablesSummary = payables.length > 0 ? {
+    totalUnpaid: payables.filter(p => p.status !== 'paid').length,
+    totalAmount: payables.reduce((s, p) => s + (parseFloat(p.amount) - parseFloat(p.paidAmount)), 0),
+    overdue: payables.filter(p => p.dueDate && new Date(p.dueDate) < now && p.status !== 'paid').length,
+  } : null
+
+  const receivablesSummary = receivables.length > 0 ? {
+    totalUnpaid: receivables.filter(r => r.status !== 'paid').length,
+    totalAmount: receivables.reduce((s, r) => s + (parseFloat(r.amount) - parseFloat(r.paidAmount)), 0),
+    overdue: receivables.filter(r => r.dueDate && new Date(r.dueDate) < now && r.status !== 'paid').length,
+  } : null
+
+  // Inventory summary
+  const inventorySummary = inventory.length > 0 ? {
+    totalItems: inventory.length,
+    lowStock: inventory.filter(i => {
+      const min = parseFloat(i.minStock || '0')
+      return min > 0 && parseFloat(i.currentStock) <= min
+    }).length,
+    totalValue: inventory.reduce((s, i) => {
+      const price = parseFloat(i.sellPrice || '0')
+      const stock = parseFloat(i.currentStock)
+      return s + (price * stock)
+    }, 0),
+  } : null
+
   return {
     totalIncome, totalExpense, netProfit: totalIncome - totalExpense,
     txCount: allTxns.length, monthIncome, monthExpense,
     topExpenses, recentTx, budgetStatus, activeGoals,
+    payablesSummary, receivablesSummary, inventorySummary,
+    featureConfig, // Pass feature config ke AI
   }
 }
 
@@ -120,12 +181,127 @@ export async function sendMessage(chatId: string, businessId: string, message: s
   const userMessage: ChatMessage = { role: 'user', content: message }
   messages.push(userMessage)
 
+  const sessionKey = `webchat:${userId}:${businessId}`
+  getOrCreateSession(sessionKey, { userId, businessId })
+
+  // ── 1. Cek intent edit/undo dari konteks percakapan ───────────────────────
+  const lastOp = getLastOperation(sessionKey)
+  if (lastOp) {
+    const editIntent = await parseEditIntent(message, lastOp)
+
+    if (editIntent.type !== 'none' && editIntent.confidence >= 70) {
+      let aiText: string
+
+      if (editIntent.type === 'undo') {
+        if (lastOp.canUndo) {
+          const result = await executeUndo(lastOp)
+          if (result.success) {
+            const session = getOrCreateSession(sessionKey)
+            session.recentOperations = session.recentOperations.filter(op => op.id !== lastOp.id)
+          }
+          aiText = result.message
+        } else {
+          aiText = `❌ Operasi "${lastOp.description}" tidak bisa dibatalkan lagi.`
+        }
+      } else if (editIntent.type === 'edit') {
+        if (lastOp.canEdit) {
+          const result = await executeEdit(lastOp, editIntent)
+          if (result.success && result.updatedData) {
+            lastOp.executedData = { ...lastOp.executedData, ...result.updatedData }
+          }
+          aiText = formatEditSuccessMessage(lastOp, editIntent, result)
+        } else {
+          aiText = `❌ Operasi "${lastOp.description}" tidak bisa diedit lagi.`
+        }
+      } else {
+        aiText = 'Intent tidak dikenali.'
+      }
+
+      const assistantMessage: ChatMessage = { role: 'assistant', content: aiText }
+      messages.push(assistantMessage)
+      await db.update(aiChat).set({ messages, updatedAt: new Date() })
+        .where(and(eq(aiChat.id, chatId), eq(aiChat.userId, userId)))
+      revalidatePath(`/dashboard/${businessId}/ai-chat`)
+      return { userMessage, assistantMessage }
+    }
+  }
+
+  // ── 2. Cek apakah ini action intent (goals, hutang, inventaris, dll) ───────
   const [businessInfo, currentUser, financialSummary] = await Promise.all([
     db.query.business.findFirst({ where: and(eq(business.id, businessId), eq(business.userId, userId)) }),
     db.query.user.findFirst({ where: eq(user.id, userId) }),
     buildFinancialSummary(businessId, userId),
   ])
 
+  const activeGoals = await db.query.goal.findMany({
+    where: and(eq(goal.businessId, businessId), eq(goal.userId, userId), eq(goal.completed, false)),
+  })
+
+  const action = await parseUserIntent(message, {
+    businessName: businessInfo?.name,
+    accountType: currentUser?.accountType || 'personal',
+    activeGoals: activeGoals.map(g => ({ id: g.id, title: g.title })),
+  })
+
+  const isActionable =
+    action.type !== 'unknown' &&
+    action.type !== 'query_data' &&
+    action.confidence >= 80
+
+  if (isActionable) {
+    // Execute langsung (di web chat tidak perlu konfirmasi terpisah karena ada UI)
+    const result = await executeAIAction(action, { userId, businessId })
+
+    let aiText: string
+    if (result.success) {
+      // Simpan ke recent ops
+      const entityTypeMap: Record<string, any> = {
+        create_transaction: 'transaction',
+        create_goal: 'goal',
+        update_goal: 'goal',
+        create_payable: 'payable',
+        create_receivable: 'receivable',
+        create_inventory_item: 'inventory_item',
+        adjust_inventory_stock: 'inventory_log',
+      }
+      const entityType = entityTypeMap[action.type]
+      if (entityType && result.data?.id) {
+        const p = action.params
+        const currency = (n: number) => `Rp ${n?.toLocaleString('id-ID') || '0'}`
+        const descMap: Record<string, string> = {
+          create_transaction: `${p.transactionType === 'income' ? 'Pemasukan' : 'Pengeluaran'} ${currency(p.amount)} - ${p.description}`,
+          create_goal: `Goal "${p.title}" target ${currency(p.targetAmount)}`,
+          add_goal_contribution: `Kontribusi ${currency(p.amount)} ke goal`,
+          create_payable: `Hutang ke ${p.contactName} ${currency(p.amount)}`,
+          create_receivable: `Piutang dari ${p.contactName} ${currency(p.amount)}`,
+        }
+        addRecentOperation(sessionKey, {
+          actionType: action.type,
+          entityId: result.data.id,
+          entityType,
+          snapshot: {},
+          executedData: { ...p, ...result.data },
+          canEdit: true,
+          canUndo: true,
+          description: descMap[action.type] || action.type,
+        })
+      }
+
+      aiText = generateSuccessMessage(action, result.data)
+      aiText += '\n\n💡 Ketik _"koreksi, yang tadi harusnya [nilai baru]"_ jika ada yang salah.'
+    } else {
+      aiText = `❌ ${result.message}`
+    }
+
+    const assistantMessage: ChatMessage = { role: 'assistant', content: aiText }
+    messages.push(assistantMessage)
+    await db.update(aiChat).set({ messages, updatedAt: new Date() })
+      .where(and(eq(aiChat.id, chatId), eq(aiChat.userId, userId)))
+    revalidatePath(`/dashboard/${businessId}/ai-chat`)
+    return { userMessage, assistantMessage }
+  }
+
+  // ── 3. Fallback: Conversational AI ───────────────────────────────────────
   let aiResponse = ''
   try {
     aiResponse = await chatWithAI(messages, {

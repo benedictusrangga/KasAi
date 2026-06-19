@@ -4,6 +4,18 @@ import { and, eq, gte, lte } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { extractTransactionsFromText, extractTransactionsFromImage, chatWithAI } from '@/lib/gemini'
 import { generateReportPdf, type ReportData } from '@/lib/pdf-server'
+import {
+  getOrCreateSession,
+  setPendingAction,
+  getPendingAction,
+  clearPendingAction,
+  addRecentOperation,
+  getLastOperation,
+} from '@/lib/conversation-store'
+import { parseUserIntent, generateConfirmationMessage, generateSuccessMessage } from '@/lib/ai-actions'
+import { getFeatureConfig } from './features'
+import { executeAIAction } from '@/lib/ai-action-executor'
+import { parseEditIntent, executeEdit, executeUndo, formatEditSuccessMessage } from '@/lib/ai-edit-handler'
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 
@@ -75,35 +87,42 @@ async function findUserByPhoneNumber(phoneNumber: string) {
 
 /**
  * Ambil bisnis yang bisa diakses user via Telegram.
- * Prioritas: bisnis yang dimiliki → bisnis yang jadi member aktif.
- * Return { business, ownerId, role }
+ * Prioritas: activeTelegramBusinessId (jika disetel) → bisnis pertama yang dimiliki → member aktif.
  */
-async function getAccessibleBusinessForTelegram(userId: string) {
-  // Cek bisnis yang dimiliki dulu
+async function getAccessibleBusinessForTelegram(userId: string, preferredBizId?: string | null) {
+  // Semua bisnis yang dimiliki
   const ownedBusinesses = await db.query.business.findMany({
     where: eq(business.userId, userId),
   })
-  if (ownedBusinesses.length > 0) {
-    return { business: ownedBusinesses[0], ownerId: userId, role: 'owner' as const }
+
+  // Semua membership aktif
+  const memberships = await db.query.businessMember.findMany({
+    where: and(eq(businessMember.userId, userId), eq(businessMember.status, 'active')),
+  })
+  const memberBizIds = memberships.map(m => m.businessId)
+  const memberBusinesses = memberBizIds.length > 0
+    ? await db.query.business.findMany({ where: (b, { inArray }) => inArray(b.id, memberBizIds) })
+    : []
+
+  // Bangun daftar semua bisnis yang bisa diakses
+  const allAccessible = [
+    ...ownedBusinesses.map(b => ({ business: b, ownerId: userId, role: 'owner' as const })),
+    ...memberBusinesses.map(b => {
+      const m = memberships.find(m => m.businessId === b.id)
+      return { business: b, ownerId: b.userId, role: (m?.role ?? 'admin') as 'admin' | 'viewer' }
+    }),
+  ]
+
+  if (allAccessible.length === 0) return null
+
+  // Jika ada preferensi bisnis aktif, cari yang cocok
+  if (preferredBizId) {
+    const preferred = allAccessible.find(a => a.business.id === preferredBizId)
+    if (preferred) return preferred
   }
 
-  // Cek membership aktif
-  const membership = await db.query.businessMember.findFirst({
-    where: and(
-      eq(businessMember.userId, userId),
-      eq(businessMember.status, 'active')
-    ),
-    orderBy: (m, { asc }) => [asc(m.joinedAt)],
-  })
-
-  if (!membership) return null
-
-  const biz = await db.query.business.findFirst({
-    where: eq(business.id, membership.businessId),
-  })
-  if (!biz) return null
-
-  return { business: biz, ownerId: biz.userId, role: membership.role as 'admin' | 'viewer' }
+  // Default: bisnis pertama
+  return allAccessible[0]
 }
 
 // Kirim file PDF ke Telegram user via sendDocument
@@ -308,25 +327,33 @@ export async function handleTelegramUpdate(update: any) {
     await sendTelegramMessage(
       chatId,
       `📖 <b>Panduan @Aiaccountingsbot</b>\n\n` +
-      `<b>📝 Mencatat transaksi:</b>\n` +
+      `<b>📝 Catat transaksi:</b>\n` +
       `• "beli gula 50rb" → pengeluaran Rp 50.000\n` +
       `• "terima bayaran 1.5jt" → pemasukan Rp 1.500.000\n` +
       `• Kirim foto struk/bukti transfer → AI baca otomatis\n\n` +
-      `<b>📊 Tanya AI:</b>\n` +
-      `• "berapa laba bulan ini?"\n` +
-      `• "status budget hiburan saya"\n` +
-      `• "progress target saya"\n\n` +
+      `<b>✏️ Koreksi input:</b>\n` +
+      `• "eh salah, yang tadi 9.5jt bukan 10jt"\n` +
+      `• "koreksi deskripsinya jadi bahan baku"\n` +
+      `• "undo" / "batalkan yang tadi"\n\n` +
+      `<b>🎯 Goals & Tabungan:</b>\n` +
+      `• "buat target 10jt untuk beli motor"\n` +
+      `• "tambah 500rb ke target motor"\n` +
+      `• /goals — lihat semua target\n` +
+      `• /tabung — tambah kontribusi ke goal\n` +
+      `• /tabung 1 500000 — tabung ke goal #1\n\n` +
+      `<b>💸 Hutang & Piutang:</b>\n` +
+      `• "catat hutang ke Budi 2jt"\n` +
+      `• "piutang dari Sari 1jt jatuh tempo 15 Jan"\n\n` +
+      `<b>📦 Inventaris:</b>\n` +
+      `• "stok kopi masuk 50kg"\n\n` +
       `<b>⌨️ Perintah:</b>\n` +
-      `/start - Mulai & info bot\n` +
-      `/help - Panduan penggunaan\n` +
-      `/status - Cek status akun\n` +
-      `/laporan - Laporan keuangan bulan ini\n` +
-      `/laporan_minggu - Laporan minggu ini\n` +
-      `/pdf - 📄 Kirim PDF laporan bulan ini\n` +
-      `/pdf_minggu - 📄 Kirim PDF laporan minggu ini\n` +
-      `/pdf_semua - 📄 Kirim PDF semua transaksi\n` +
-      `/budget - Cek status budget bulan ini\n` +
-      `/target - Cek progress semua target`,
+      `/status - Cek status akun & bisnis\n` +
+      `/goals - Lihat semua target + progress\n` +
+      `/tabung - Tambah tabungan ke goal\n` +
+      `/laporan - Laporan keuangan\n` +
+      `/pdf - Export laporan PDF\n` +
+      `/budget - Status budget bulan ini\n` +
+      `/switch - Ganti bisnis aktif`,
       'HTML'
     )
     return
@@ -530,36 +557,211 @@ export async function handleTelegramUpdate(update: any) {
     return
   }
 
-  // ── Handle /target ─────────────────────────────────────────────────────────
-  if (messageText === '/target') {
+  // ── Handle /target & /goals (alias) ──────────────────────────────────────
+  if (messageText === '/target' || messageText === '/goals') {
     const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
     if (!tempUser) { await sendTelegramMessage(chatId, '❌ Akun belum terhubung.'); return }
-    const bizAccessTarget = await getAccessibleBusinessForTelegram(tempUser.id)
+    const bizAccessTarget = await getAccessibleBusinessForTelegram(tempUser.id, tempUser.activeTelegramBusinessId)
     if (!bizAccessTarget) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
     const tempBiz = bizAccessTarget.business
 
-    const goals = await db.query.goal.findMany({ where: and(eq(goal.businessId, tempBiz.id), eq(goal.userId, bizAccessTarget.ownerId)) })
+    const goals = await db.query.goal.findMany({
+      where: and(eq(goal.businessId, tempBiz.id), eq(goal.userId, bizAccessTarget.ownerId)),
+      orderBy: (g, { asc }) => [asc(g.completed), asc(g.createdAt)],
+    })
     if (goals.length === 0) {
-      await sendTelegramMessage(chatId, '🎯 Belum ada target keuangan.\n\nTambahkan target di menu <b>Goals &amp; Budget</b> di aplikasi KasAI.', 'HTML')
+      await sendTelegramMessage(chatId,
+        '🎯 Belum ada target keuangan.\n\nTambahkan target di aplikasi KasAI atau ketik:\n<code>buat target [nama] [jumlah]</code>\n\nContoh: <i>buat target motor 10 juta</i>',
+        'HTML')
       return
     }
 
-    let msg = `🎯 <b>PROGRESS TARGET KEUANGAN</b>\n\n`
-    goals.forEach(g => {
+    let msg = `🎯 <b>TARGET KEUANGAN — ${escapeHtml(tempBiz.name)}</b>\n\n`
+    const activeGoals = goals.filter(g => !g.completed)
+    const doneGoals   = goals.filter(g => g.completed)
+
+    activeGoals.forEach((g, idx) => {
       const pct = Math.min(Math.round((parseFloat(g.currentAmount) / parseFloat(g.targetAmount)) * 100), 100)
-      const bar = '█'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10))
-      const icon = g.completed ? '✅' : pct >= 75 ? '🔥' : pct >= 50 ? '💪' : '🎯'
+      const filled = Math.floor(pct / 10)
+      const bar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+      const icon = pct >= 75 ? '🔥' : pct >= 50 ? '💪' : '🎯'
+      const sisa = parseFloat(g.targetAmount) - parseFloat(g.currentAmount)
       msg += `${icon} <b>${escapeHtml(g.title)}</b>\n`
       msg += `${bar} ${pct}%\n`
-      msg += `Rp ${parseFloat(g.currentAmount).toLocaleString('id-ID')} / Rp ${parseFloat(g.targetAmount).toLocaleString('id-ID')}\n`
-      if (g.deadline) msg += `📅 Deadline: ${new Date(g.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}\n`
-      if (g.completed) msg += `🎉 Target tercapai!\n`
-      msg += '\n'
+      msg += `Terkumpul: Rp ${parseFloat(g.currentAmount).toLocaleString('id-ID')}\n`
+      msg += `Target: Rp ${parseFloat(g.targetAmount).toLocaleString('id-ID')}\n`
+      msg += `Sisa: Rp ${sisa.toLocaleString('id-ID')}\n`
+      if (g.deadline) msg += `📅 Deadline: ${new Date(g.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}\n`
+      msg += `\n💡 Ketik: <code>tabung ${idx + 1} [jumlah]</code>\n\n`
     })
+
+    if (doneGoals.length > 0) {
+      msg += `✅ <b>Tercapai (${doneGoals.length}):</b> ${doneGoals.map(g => escapeHtml(g.title)).join(', ')}\n\n`
+    }
+
+    msg += `<i>Tambah kontribusi: "tabung 500rb ke motor" atau /tabung</i>`
 
     await sendTelegramMessage(chatId, msg, 'HTML')
     return
   }
+
+  // ── Handle /tabung — Tambah kontribusi ke goal ─────────────────────────────
+  // Format: /tabung  atau  tabung [nomor_goal] [jumlah]
+  if (messageText === '/tabung' || messageText.startsWith('/tabung ')) {
+    const tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
+    if (!tempUser) { await sendTelegramMessage(chatId, '❌ Akun belum terhubung.'); return }
+    const bizAccessTabung = await getAccessibleBusinessForTelegram(tempUser.id, tempUser.activeTelegramBusinessId)
+    if (!bizAccessTabung) { await sendTelegramMessage(chatId, '⚠️ Belum ada bisnis.'); return }
+
+    const goals = await db.query.goal.findMany({
+      where: and(
+        eq(goal.businessId, bizAccessTabung.business.id),
+        eq(goal.userId, bizAccessTabung.ownerId),
+        eq(goal.completed, false),
+      ),
+      orderBy: (g, { asc }) => [asc(g.createdAt)],
+    })
+
+    if (goals.length === 0) {
+      await sendTelegramMessage(chatId, '🎯 Belum ada target aktif. Buat dulu di aplikasi atau ketik "buat target [nama] [jumlah]".')
+      return
+    }
+
+    // Parse argumen: /tabung [nomor] [jumlah]
+    const args = messageText.replace('/tabung', '').trim().split(/\s+/).filter(Boolean)
+    const goalIndex = args[0] && /^\d+$/.test(args[0]) ? parseInt(args[0]) - 1 : null
+    const amountArg = args[goalIndex !== null ? 1 : 0]
+
+    // Kalau tidak ada argumen lengkap — tampilkan daftar goal
+    if (goalIndex === null || !amountArg) {
+      let menu = `💰 <b>TABUNG KE GOAL MANA?</b>\n\n`
+      goals.forEach((g, i) => {
+        const pct = Math.min(Math.round((parseFloat(g.currentAmount) / parseFloat(g.targetAmount)) * 100), 100)
+        const sisa = parseFloat(g.targetAmount) - parseFloat(g.currentAmount)
+        menu += `${i + 1}. <b>${escapeHtml(g.title)}</b> (${pct}%) — sisa Rp ${sisa.toLocaleString('id-ID')}\n`
+      })
+      menu += `\nFormat: <code>/tabung [nomor] [jumlah]</code>\nContoh: <code>/tabung 1 500000</code> atau ketik "tabung 500rb ke motor"`
+      await sendTelegramMessage(chatId, menu, 'HTML')
+      return
+    }
+
+    const targetGoal = goals[goalIndex]
+    if (!targetGoal) {
+      await sendTelegramMessage(chatId, `❌ Goal nomor ${goalIndex + 1} tidak ditemukan.`)
+      return
+    }
+
+    // Parse jumlah
+    const amountMatch = amountArg.match(/^(\d+(?:[.,]\d+)?)(jt?|juta|rb|ribu|k)?$/i)
+    if (!amountMatch) {
+      await sendTelegramMessage(chatId, '❌ Format jumlah tidak valid. Contoh: 500000, 500rb, 1jt')
+      return
+    }
+    let amount = parseFloat(amountMatch[1].replace(',', '.'))
+    const unit = (amountMatch[2] || '').toLowerCase()
+    if (unit === 'jt' || unit === 'juta' || unit === 'j') amount *= 1_000_000
+    else if (unit === 'rb' || unit === 'ribu' || unit === 'k') amount *= 1_000
+
+    if (amount <= 0) {
+      await sendTelegramMessage(chatId, '❌ Jumlah harus lebih dari 0.')
+      return
+    }
+
+    // Cek konfigurasi goalContributionAsExpense
+    const featureCfg = await getFeatureConfig(bizAccessTabung.business.id).catch(() => null)
+    const alsoAsExpense = featureCfg?.goalContributionAsExpense === true
+
+    // Simpan kontribusi
+    const newCurrent = parseFloat(targetGoal.currentAmount) + amount
+    const newTarget  = parseFloat(targetGoal.targetAmount)
+    const completed  = newCurrent >= newTarget
+    const pctNew     = Math.min(Math.round((newCurrent / newTarget) * 100), 100)
+
+    await db.update(goal).set({
+      currentAmount: newCurrent.toString(),
+      completed,
+      updatedAt: new Date(),
+    }).where(eq(goal.id, targetGoal.id))
+
+    // Jika config goalContributionAsExpense = true, catat juga sebagai transaksi expense
+    if (alsoAsExpense) {
+      await db.insert(transaction).values({
+        id: nanoid(),
+        businessId: bizAccessTabung.business.id,
+        userId: bizAccessTabung.ownerId,
+        inputByUserId: tempUser.id,
+        amount: amount.toString(),
+        transaction_type: 'expense',
+        description: `Tabungan: ${targetGoal.title}`,
+        categoryName: 'Tabungan/Goal',
+        source: 'telegram',
+      })
+    }
+
+    const filled = Math.floor(pctNew / 10)
+    const bar    = '█'.repeat(filled) + '░'.repeat(10 - filled)
+    const sisa   = Math.max(0, newTarget - newCurrent)
+
+    let reply = `✅ <b>Kontribusi berhasil!</b>\n\n`
+    reply += `🎯 Goal: <b>${escapeHtml(targetGoal.title)}</b>\n`
+    reply += `💰 Ditambahkan: Rp ${amount.toLocaleString('id-ID')}\n`
+    reply += `${bar} ${pctNew}%\n`
+    reply += `Terkumpul: Rp ${newCurrent.toLocaleString('id-ID')} / Rp ${newTarget.toLocaleString('id-ID')}\n`
+
+    if (completed) {
+      reply += `\n🎉 <b>SELAMAT! Target "${escapeHtml(targetGoal.title)}" tercapai!</b> 🎊`
+    } else {
+      reply += `Sisa: Rp ${sisa.toLocaleString('id-ID')}\n`
+    }
+
+    if (alsoAsExpense) {
+      reply += `\n\n📊 <i>Kontribusi ini juga dicatat sebagai pengeluaran.</i>`
+    }
+
+    await sendTelegramMessage(chatId, reply, 'HTML')
+    return
+  }
+  // Handle /switch (ganti bisnis aktif via Telegram)
+  if (messageText === '/switch') {
+    let tempUser = senderTelegramId ? await findUserByTelegramId(senderTelegramId) : null
+    if (!tempUser) { await sendTelegramMessage(chatId, '❌ Akun belum terhubung. Ketik /start.'); return }
+
+    const ownedBiz = await db.query.business.findMany({ where: eq(business.userId, tempUser.id) })
+    const memberships = await db.query.businessMember.findMany({
+      where: and(eq(businessMember.userId, tempUser.id), eq(businessMember.status, 'active'))
+    })
+    const memberBizIds = memberships.map(m => m.businessId)
+    const memberBizList = memberBizIds.length > 0
+      ? await db.query.business.findMany({ where: (b, { inArray }) => inArray(b.id, memberBizIds) })
+      : []
+
+    const allBiz = [
+      ...ownedBiz.map(b => ({ ...b, role: 'owner' })),
+      ...memberBizList.map(b => {
+        const m = memberships.find(m => m.businessId === b.id)
+        return { ...b, role: m?.role || 'admin' }
+      }),
+    ]
+
+    if (allBiz.length <= 1) {
+      await sendTelegramMessage(chatId, 'Anda hanya memiliki 1 bisnis. Tidak perlu switch.')
+      return
+    }
+
+    const activeBizId = tempUser.activeTelegramBusinessId
+    const list = allBiz.map((b, i) => {
+      const isActive = b.id === activeBizId || (!activeBizId && i === 0)
+      const roleLabel = b.role === 'owner' ? 'Pemilik' : b.role === 'admin' ? 'Admin' : 'Viewer'
+      return `${i + 1}. ${isActive ? '✅ ' : ''}<b>${escapeHtml(b.name)}</b> (${roleLabel})`
+    }).join('\n')
+
+    await sendTelegramMessage(chatId,
+      `🔄 <b>Ganti Bisnis Aktif</b>\n\n${list}\n\nBalas dengan nomor bisnis yang ingin diaktifkan.\nContoh ketik: <code>2</code>`,
+      'HTML'
+    )
+    return
+  }
+
   let userRecord = senderTelegramId
     ? await findUserByTelegramId(senderTelegramId)
     : null
@@ -581,8 +783,8 @@ export async function handleTelegramUpdate(update: any) {
       `Cara menghubungkan:\n` +
       `1. Buka aplikasi KasAI\n` +
       `2. Masuk ke <b>Pengaturan</b>\n` +
-      `3. Isi kolom <b>Nomor HP</b> dengan nomor Telegram Anda\n` +
-      `4. Klik Simpan, lalu coba kirim pesan lagi\n\n` +
+      `3. Isi kolom <b>Telegram ID</b> lalu klik Simpan\n` +
+      `4. Ketuk /start untuk memulai\n\n` +
       `Ketik /start untuk info lebih lanjut.`,
       'HTML'
     )
@@ -591,22 +793,45 @@ export async function handleTelegramUpdate(update: any) {
 
   // Auto-save phone number jika user kirim kontak
   if (message.contact && !userRecord.phoneNumber) {
-    await db
-      .update(user)
-      .set({ phoneNumber: message.contact.phone_number, updatedAt: new Date() })
-      .where(eq(user.id, userRecord.id))
+    await db.update(user).set({ phoneNumber: message.contact.phone_number, updatedAt: new Date() }).where(eq(user.id, userRecord.id))
   }
 
   // Auto-link telegramId jika belum ada
   if (senderTelegramId && !userRecord.telegramId) {
-    await db
-      .update(user)
-      .set({ telegramId: senderTelegramId, updatedAt: new Date() })
-      .where(eq(user.id, userRecord.id))
+    await db.update(user).set({ telegramId: senderTelegramId, updatedAt: new Date() }).where(eq(user.id, userRecord.id))
   }
 
-  // Cari bisnis yang bisa diakses (owner atau member aktif)
-  const bizAccess = await getAccessibleBusinessForTelegram(userRecord.id)
+  // ── Deteksi input angka untuk /switch bisnis ───────────────────────────────
+  if (typeof message.text === 'string' && /^\d+$/.test(messageText)) {
+    const num = parseInt(messageText)
+    // Cek apakah ada list bisnis yang bisa di-switch
+    const ownedBizSw = await db.query.business.findMany({ where: eq(business.userId, userRecord.id) })
+    const membershipsSw = await db.query.businessMember.findMany({
+      where: and(eq(businessMember.userId, userRecord.id), eq(businessMember.status, 'active'))
+    })
+    const memberBizIdsSw = membershipsSw.map(m => m.businessId)
+    const memberBizSw = memberBizIdsSw.length > 0
+      ? await db.query.business.findMany({ where: (b, { inArray }) => inArray(b.id, memberBizIdsSw) })
+      : []
+    const allBizSw = [...ownedBizSw, ...memberBizSw]
+
+    if (allBizSw.length > 1 && num >= 1 && num <= allBizSw.length) {
+      const chosen = allBizSw[num - 1]
+      await db.update(user)
+        .set({ activeTelegramBusinessId: chosen.id, updatedAt: new Date() })
+        .where(eq(user.id, userRecord.id))
+      await sendTelegramMessage(
+        chatId,
+        `✅ Bisnis aktif diganti ke <b>${escapeHtml(chosen.name)}</b>\n\nSekarang semua transaksi akan dicatat ke bisnis ini.`,
+        'HTML'
+      )
+      return
+    }
+    // Kalau bukan konteks switch, lanjut ke flow normal (angka mungkin nominal transaksi)
+  }
+
+  // Cari bisnis yang bisa diakses (dengan preferensi activeTelegramBusinessId)
+  const bizAccess = await getAccessibleBusinessForTelegram(userRecord.id, userRecord.activeTelegramBusinessId)
 
   if (!bizAccess) {
     await sendTelegramMessage(
@@ -736,6 +961,265 @@ export async function handleTelegramUpdate(update: any) {
       return
     }
 
+    const sessionKey = `telegram:${chatId}`
+
+    // Pastikan session ada dengan konteks user
+    getOrCreateSession(sessionKey, { userId: userRecord.id, businessId: activeBusiness.id })
+
+    // ── Cek konfirmasi pending (ya/tidak) ─────────────────────────────────
+    const confirmKw = new Set(['ya', 'yes', 'ok', 'oke', 'y', 'lanjut'])
+    const cancelKw  = new Set(['tidak', 'no', 'n', 'batal', 'cancel', 'ga', 'gak', 'jangan'])
+    const isConfirm = confirmKw.has(text.toLowerCase())
+    const isCancel  = cancelKw.has(text.toLowerCase())
+
+    if (isConfirm || isCancel) {
+      const pendingAction = getPendingAction(sessionKey)
+
+      if (pendingAction) {
+        clearPendingAction(sessionKey)
+
+        if (isCancel) {
+          await sendTelegramMessage(chatId, '❌ Action dibatalkan.')
+          return
+        }
+
+        // Handle special edit confirmation
+        if ((pendingAction as any).type === 'edit_operation') {
+          const { opId, editIntent } = (pendingAction as any).params
+          const session = getOrCreateSession(sessionKey)
+          const op = session.recentOperations.find(o => o.id === opId)
+          if (!op) {
+            await sendTelegramMessage(chatId, '❌ Operasi tidak ditemukan. Mungkin sudah terlalu lama.')
+            return
+          }
+          const result = await executeEdit(op, editIntent)
+          if (result.success && result.updatedData) {
+            op.executedData = { ...op.executedData, ...result.updatedData }
+          }
+          await sendTelegramMessage(chatId, formatEditSuccessMessage(op, editIntent, result))
+          return
+        }
+
+        // Execute confirmed action
+        const result = await executeAIAction(pendingAction, {
+          userId: activeBusinessOwnerId,
+          businessId: activeBusiness.id,
+        })
+
+        if (!result.success) {
+          await sendTelegramMessage(chatId, `❌ ${result.message}`)
+          return
+        }
+
+        // Simpan ke recent operations untuk edit/undo
+        const entityTypeMap: Record<string, any> = {
+          create_transaction: 'transaction',
+          create_goal: 'goal',
+          update_goal: 'goal',
+          create_payable: 'payable',
+          create_receivable: 'receivable',
+          create_inventory_item: 'inventory_item',
+          adjust_inventory_stock: 'inventory_log',
+        }
+        const entityType = entityTypeMap[pendingAction.type]
+        if (entityType && result.data?.id) {
+          const p = pendingAction.params
+          const currency = (n: number) => `Rp ${n?.toLocaleString('id-ID') || '0'}`
+          const descMap: Record<string, string> = {
+            create_transaction: `${p.transactionType === 'income' ? 'Pemasukan' : 'Pengeluaran'} ${currency(p.amount)} - ${p.description}`,
+            create_goal: `Goal "${p.title}" target ${currency(p.targetAmount)}`,
+            add_goal_contribution: `Kontribusi ${currency(p.amount)} ke goal`,
+            create_payable: `Hutang ke ${p.contactName} ${currency(p.amount)}`,
+            create_receivable: `Piutang dari ${p.contactName} ${currency(p.amount)}`,
+            create_inventory_item: `Item inventaris "${p.name}"`,
+          }
+          addRecentOperation(sessionKey, {
+            actionType: pendingAction.type,
+            entityId: result.data.id,
+            entityType,
+            snapshot: {},
+            executedData: { ...p, ...result.data },
+            canEdit: true,
+            canUndo: true,
+            description: descMap[pendingAction.type] || pendingAction.type,
+          })
+        }
+
+        await sendTelegramMessage(chatId, generateSuccessMessage(pendingAction, result.data))
+        return
+      }
+      // Tidak ada pending — fall through ke AI/extract
+    }
+
+    // ── Cek intent edit/undo ──────────────────────────────────────────────
+    const lastOp = getLastOperation(sessionKey)
+    if (lastOp) {
+      const editIntent = await parseEditIntent(text, lastOp)
+
+      if (editIntent.type !== 'none' && editIntent.confidence >= 70) {
+        if (editIntent.type === 'undo') {
+          if (!lastOp.canUndo) {
+            await sendTelegramMessage(chatId, `❌ Operasi "${lastOp.description}" tidak bisa dibatalkan.`)
+            return
+          }
+          const result = await executeUndo(lastOp)
+          if (result.success) {
+            const session = getOrCreateSession(sessionKey)
+            session.recentOperations = session.recentOperations.filter(op => op.id !== lastOp.id)
+          }
+          await sendTelegramMessage(chatId, result.message)
+          return
+        }
+
+        if (editIntent.type === 'edit') {
+          if (!lastOp.canEdit) {
+            await sendTelegramMessage(chatId, `❌ Operasi "${lastOp.description}" tidak bisa diedit.`)
+            return
+          }
+          // Minta konfirmasi edit
+          const oldVal = getOldValueForDisplay(lastOp, editIntent.field)
+          const newVal = formatValueForDisplay(editIntent.newValue, editIntent.field)
+          const confirmMsg = [
+            `✏️ <b>Konfirmasi Edit</b>`,
+            `📌 Operasi: ${lastOp.description}`,
+            oldVal ? `📌 Sebelum: ${oldVal}` : '',
+            `✅ Sesudah: ${newVal}`,
+            '',
+            'Balas "ya" untuk konfirmasi atau "tidak" untuk batal.',
+          ].filter(Boolean).join('\n')
+
+          setPendingAction(sessionKey, {
+            type: 'edit_operation' as any,
+            params: { opId: lastOp.id, editIntent },
+            confidence: editIntent.confidence,
+            explanation: editIntent.reason,
+          })
+          await sendTelegramMessage(chatId, confirmMsg, 'HTML')
+          return
+        }
+      }
+    }
+
+    // ── Coba parse sebagai action (goals, hutang, inventaris, dll) ────────
+    // Load active goals untuk konteks AI
+    const activeGoalsForContext = await db.query.goal.findMany({
+      where: and(eq(goal.businessId, activeBusiness.id), eq(goal.userId, activeBusinessOwnerId), eq(goal.completed, false)),
+    })
+
+    const action = await parseUserIntent(text, {
+      businessName: activeBusiness.name,
+      accountType: userRecord.accountType || 'personal',
+      activeGoals: activeGoalsForContext.map(g => ({ id: g.id, title: g.title })),
+    })
+
+    // Kalau bukan query dan confidence tinggi → tawari sebagai action
+    if (
+      action.type !== 'unknown' &&
+      action.type !== 'query_data' &&
+      action.type !== 'create_transaction' && // transaksi dihandle oleh extractor
+      action.confidence >= 75
+    ) {
+      // Khusus add_goal_contribution: cek goalContributionAsExpense config
+      if (action.type === 'add_goal_contribution') {
+        const featureCfgGoal = await getFeatureConfig(activeBusiness.id).catch(() => null)
+        const alsoAsExpense = featureCfgGoal?.goalContributionAsExpense === true
+
+        // Cari goal yang cocok dari activeGoalsForContext
+        let targetGoalId: string | undefined = action.params.goalId
+        if (!targetGoalId && action.params.goalTitle) {
+          const lower = action.params.goalTitle.toLowerCase()
+          const matched = activeGoalsForContext.find(g => g.title.toLowerCase().includes(lower))
+          targetGoalId = matched?.id
+        }
+
+        if (!targetGoalId && activeGoalsForContext.length === 1) {
+          targetGoalId = activeGoalsForContext[0].id
+        }
+
+        if (!targetGoalId) {
+          // Tampilkan list goals untuk dipilih
+          let menu = `💰 <b>Tabung ke goal mana?</b>\n\n`
+          activeGoalsForContext.forEach((g, i) => {
+            const sisa = parseFloat(g.targetAmount) - parseFloat(g.currentAmount)
+            menu += `${i + 1}. <b>${escapeHtml(g.title)}</b> — sisa Rp ${sisa.toLocaleString('id-ID')}\n`
+          })
+          menu += `\nKetik: <code>/tabung [nomor] [jumlah]</code>\nContoh: <code>/tabung 1 ${action.params.amount?.toLocaleString('id-ID') || '500000'}</code>`
+          await sendTelegramMessage(chatId, menu, 'HTML')
+          return
+        }
+
+        // Execute langsung tanpa confirm (kontribusi goal low-risk)
+        const targetGoalRecord = activeGoalsForContext.find(g => g.id === targetGoalId)
+        if (!targetGoalRecord) {
+          await sendTelegramMessage(chatId, '❌ Goal tidak ditemukan.')
+          return
+        }
+
+        const contrib = action.params.amount as number
+        const newCurrent = parseFloat(targetGoalRecord.currentAmount) + contrib
+        const newTarget = parseFloat(targetGoalRecord.targetAmount)
+        const completed = newCurrent >= newTarget
+        const pct = Math.min(Math.round((newCurrent / newTarget) * 100), 100)
+
+        await db.update(goal).set({
+          currentAmount: newCurrent.toString(),
+          completed,
+          updatedAt: new Date(),
+        }).where(eq(goal.id, targetGoalId))
+
+        if (alsoAsExpense) {
+          await db.insert(transaction).values({
+            id: nanoid(),
+            businessId: activeBusiness.id,
+            userId: activeBusinessOwnerId,
+            inputByUserId: userRecord.id,
+            amount: contrib.toString(),
+            transaction_type: 'expense',
+            description: `Tabungan: ${targetGoalRecord.title}`,
+            categoryName: 'Tabungan/Goal',
+            source: 'telegram',
+          })
+        }
+
+        const bar = '█'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10))
+        const sisa = Math.max(0, newTarget - newCurrent)
+
+        let reply = `✅ <b>Kontribusi berhasil!</b>\n\n`
+        reply += `🎯 <b>${escapeHtml(targetGoalRecord.title)}</b>\n`
+        reply += `💰 Ditambahkan: Rp ${contrib.toLocaleString('id-ID')}\n`
+        reply += `${bar} ${pct}%\n`
+        reply += `Terkumpul: Rp ${newCurrent.toLocaleString('id-ID')} / Rp ${newTarget.toLocaleString('id-ID')}\n`
+
+        if (completed) {
+          reply += `\n🎉 <b>SELAMAT! Target tercapai!</b> 🎊`
+        } else {
+          reply += `Sisa: Rp ${sisa.toLocaleString('id-ID')}\n`
+          if (alsoAsExpense) reply += `\n📊 <i>Dicatat juga sebagai pengeluaran.</i>`
+        }
+
+        // Simpan ke conversation store
+        addRecentOperation(sessionKey, {
+          actionType: 'add_goal_contribution',
+          entityId: targetGoalId,
+          entityType: 'goal',
+          snapshot: { currentAmount: targetGoalRecord.currentAmount },
+          executedData: { goalId: targetGoalId, title: targetGoalRecord.title, amount: contrib },
+          canEdit: false,
+          canUndo: true,
+          description: `Kontribusi Rp ${contrib.toLocaleString('id-ID')} ke goal "${targetGoalRecord.title}"`,
+        })
+
+        await sendTelegramMessage(chatId, reply, 'HTML')
+        return
+      }
+
+      // Untuk action lain — minta konfirmasi dulu
+      setPendingAction(sessionKey, action)
+      await sendTelegramMessage(chatId, generateConfirmationMessage(action))
+      return
+    }
+
+    // ── Extractor transaksi biasa ─────────────────────────────────────────
     const extracted = await extractTransactionsFromText(text, {
       accountType: userRecord.accountType || undefined,
       businessType: activeBusiness.type,
@@ -755,11 +1239,12 @@ export async function handleTelegramUpdate(update: any) {
           transaction_type: item.transactionType,
           description: item.description,
           categoryId: null,
+          categoryName: item.category !== 'other' ? item.category : null,
           source: 'telegram',
           createdAt: new Date(),
           updatedAt: new Date(),
         })
-        created.push(item)
+        created.push({ ...item, id })
       }
 
       const summary = created
@@ -770,11 +1255,32 @@ export async function handleTelegramUpdate(update: any) {
 
       await sendTelegramMessage(
         chatId,
-        `✅ Transaksi dicatat untuk <b>${escapeHtml(activeBusiness.name)}</b>:\n\n${summary}`,
+        `✅ Transaksi dicatat untuk <b>${escapeHtml(activeBusiness.name)}</b>:\n\n${summary}\n\n<i>Ketik "batalkan yang tadi" jika salah input</i>`,
         'HTML'
       )
 
-      // ── Budget alert setelah transaksi expense ─────────────────────────────
+      // Simpan transaksi pertama ke recent operations untuk edit/undo
+      if (created[0]) {
+        const first = created[0]
+        const currency = (n: number) => `Rp ${n?.toLocaleString('id-ID') || '0'}`
+        addRecentOperation(sessionKey, {
+          actionType: 'create_transaction',
+          entityId: first.id,
+          entityType: 'transaction',
+          snapshot: {},
+          executedData: {
+            amount: first.amount.toString(),
+            transaction_type: first.transactionType,
+            description: first.description,
+            categoryName: first.category,
+          },
+          canEdit: true,
+          canUndo: true,
+          description: `${first.transactionType === 'income' ? 'Pemasukan' : 'Pengeluaran'} ${currency(first.amount)} - ${first.description}`,
+        })
+      }
+
+      // Budget alert
       const expenseItems = created.filter(item => item.transactionType === 'expense')
       if (expenseItems.length > 0) {
         try {
@@ -793,62 +1299,44 @@ export async function handleTelegramUpdate(update: any) {
               const cat = t.categoryId || 'other'
               spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
             })
-
             const alerts: string[] = []
             budgets.forEach(b => {
               const spent = spentByCategory[b.category] || 0
               const budgetAmt = parseFloat(b.amount)
               const pct = (spent / budgetAmt) * 100
               const label = CATEGORY_LABELS[b.category] || b.category
-              if (pct > 100) {
-                alerts.push(`🔴 Budget <b>${label}</b> melebihi batas! (${Math.round(pct)}% — Rp ${spent.toLocaleString('id-ID')} dari Rp ${budgetAmt.toLocaleString('id-ID')})`)
-              } else if (pct > 80) {
-                alerts.push(`🟡 Budget <b>${label}</b> hampir habis (${Math.round(pct)}% — sisa Rp ${(budgetAmt - spent).toLocaleString('id-ID')})`)
-              }
+              if (pct > 100) alerts.push(`🔴 Budget <b>${label}</b> melebihi batas! (${Math.round(pct)}%)`)
+              else if (pct > 80) alerts.push(`🟡 Budget <b>${label}</b> hampir habis (${Math.round(pct)}%)`)
             })
-
             if (alerts.length > 0) {
-              await sendTelegramMessage(chatId, `⚠️ <b>Peringatan Budget:</b>\n\n${alerts.join('\n')}`, 'HTML')
+              await sendTelegramMessage(chatId, `⚠️ <b>Peringatan Budget:</b>\n${alerts.join('\n')}`, 'HTML')
             }
           }
-        } catch {
-          // Budget alert gagal — tidak perlu crash, transaksi sudah tersimpan
-        }
+        } catch { /* non-critical */ }
       }
       return
     }
 
-    // Fallback ke AI chat — inject data keuangan real
+    // ── Fallback: AI Chat ────────────────────────────────────────────────
     try {
-      // Ambil ringkasan keuangan (hemat token: hanya agregat, bukan semua transaksi)
       const allTxns = await db.query.transaction.findMany({
         where: eq(transaction.businessId, activeBusiness.id),
         orderBy: (t, { desc }) => [desc(t.createdAt)],
       })
-
       const now = new Date()
       const thisMonth = allTxns.filter((t) => {
         const d = new Date(t.createdAt)
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
       })
-
-      const totalIncome = allTxns.filter((t) => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
-      const totalExpense = allTxns.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
-      const monthIncome = thisMonth.filter((t) => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
-      const monthExpense = thisMonth.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
-
-      // Top 3 pengeluaran terbesar
-      const topExpenses = allTxns
-        .filter((t) => t.transaction_type === 'expense')
-        .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
-        .slice(0, 3)
-        .map((t) => ({ desc: t.description, amount: parseFloat(t.amount) }))
-
-      // 5 transaksi terakhir
-      const recentTx = allTxns.slice(0, 5).map((t) => ({
-        type: t.transaction_type,
-        desc: t.description,
-        amount: parseFloat(t.amount),
+      const totalIncome  = allTxns.filter(t => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
+      const totalExpense = allTxns.filter(t => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
+      const monthIncome  = thisMonth.filter(t => t.transaction_type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0)
+      const monthExpense = thisMonth.filter(t => t.transaction_type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0)
+      const topExpenses  = allTxns.filter(t => t.transaction_type === 'expense')
+        .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount)).slice(0, 3)
+        .map(t => ({ desc: t.description, amount: parseFloat(t.amount) }))
+      const recentTx = allTxns.slice(0, 5).map(t => ({
+        type: t.transaction_type, desc: t.description, amount: parseFloat(t.amount),
         date: new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
       }))
 
@@ -860,16 +1348,7 @@ export async function handleTelegramUpdate(update: any) {
           businessType: activeBusiness.type,
           businessName: activeBusiness.name,
           aiPersona: userRecord.aiPersona || 'professional',
-          financialSummary: {
-            totalIncome,
-            totalExpense,
-            netProfit: totalIncome - totalExpense,
-            txCount: allTxns.length,
-            monthIncome,
-            monthExpense,
-            topExpenses,
-            recentTx,
-          },
+          financialSummary: { totalIncome, totalExpense, netProfit: totalIncome - totalExpense, txCount: allTxns.length, monthIncome, monthExpense, topExpenses, recentTx },
         }
       )
       await sendTelegramMessage(chatId, aiResponse || 'Maaf, saya tidak dapat memproses pesan ini.')
@@ -879,8 +1358,26 @@ export async function handleTelegramUpdate(update: any) {
     return
   }
 
-  await sendTelegramMessage(
-    chatId,
-    'Silakan kirimkan pesan teks untuk mencatat transaksi atau menanyakan laporan keuangan.\n\nKetik /help untuk panduan.'
-  )
+  await sendTelegramMessage(chatId, 'Silakan kirimkan pesan teks. Ketik /help untuk panduan.')
+}
+
+// ─── Display helpers ──────────────────────────────────────────────────────────
+function getOldValueForDisplay(op: any, field?: string): string | null {
+  if (!field || !op.executedData) return null
+  const d = op.executedData
+  const cur = (v: any) => `Rp ${parseFloat(String(v || 0)).toLocaleString('id-ID')}`
+  if (field === 'amount') return cur(d.amount)
+  if (field === 'targetAmount') return cur(d.targetAmount)
+  if (field === 'description') return `"${d.description}"`
+  if (field === 'transactionType') return d.transaction_type === 'income' ? 'Pemasukan' : 'Pengeluaran'
+  if (field === 'contactName') return d.contactName || null
+  return null
+}
+
+function formatValueForDisplay(value: any, field?: string): string {
+  if (value === null || value === undefined) return 'N/A'
+  if ((field === 'amount' || field === 'targetAmount') && typeof value === 'number')
+    return `Rp ${value.toLocaleString('id-ID')}`
+  if (field === 'transactionType') return value === 'income' ? 'Pemasukan' : 'Pengeluaran'
+  return String(value)
 }

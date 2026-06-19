@@ -3,32 +3,45 @@
 import Link from 'next/link'
 import { usePathname, useParams } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { KasAILogo } from '@/components/logo'
 import { useAppTheme } from '@/components/theme-provider'
+import { getFeatureConfig } from '@/app/actions/features'
 
-const NAV_ITEMS = [
-  { label: 'Dashboard',    href: (id: string) => `/dashboard/${id}`,              icon: 'grid',     exact: true  },
-  { label: 'Transaksi',    href: (id: string) => `/dashboard/${id}/transactions`, icon: 'arrows',   exact: false },
-  { label: 'Tambah',       href: (id: string) => `/dashboard/${id}/add-expense`,  icon: 'plus',     exact: false },
-  { label: 'AI Chat',      href: (id: string) => `/dashboard/${id}/ai-chat`,      icon: 'sparkle',  exact: false },
-  { label: 'Goals',        href: (id: string) => `/dashboard/${id}/goals`,        icon: 'target',   exact: false },
-  { label: 'Laporan',      href: (id: string) => `/dashboard/${id}/reports`,      icon: 'chart',    exact: false },
-  { label: 'Pengaturan',   href: (id: string) => `/dashboard/${id}/settings`,     icon: 'settings', exact: false },
+type NavItem = {
+  label: string
+  href: (id: string) => string
+  icon: string
+  exact: boolean
+  featureKey?: string // fitur opsional yang perlu dicek
+}
+
+const BASE_NAV_ITEMS: NavItem[] = [
+  { label: 'Dashboard',   href: (id) => `/dashboard/${id}`,              icon: 'grid',        exact: true  },
+  { label: 'Transaksi',   href: (id) => `/dashboard/${id}/transactions`, icon: 'arrows',      exact: false },
+  { label: 'Tambah',      href: (id) => `/dashboard/${id}/add-expense`,  icon: 'plus',        exact: false },
+  { label: 'AI Chat',     href: (id) => `/dashboard/${id}/ai-chat`,      icon: 'sparkle',     exact: false },
+  { label: 'Goals',       href: (id) => `/dashboard/${id}/goals`,        icon: 'target',      exact: false, featureKey: 'enableGoals' },
+  { label: 'Hutang/Piutang', href: (id) => `/dashboard/${id}/payables`,  icon: 'debt',        exact: false, featureKey: 'enablePayables' },
+  { label: 'Inventaris',  href: (id) => `/dashboard/${id}/inventory`,    icon: 'inventory',   exact: false, featureKey: 'enableInventory' },
+  { label: 'Laporan',     href: (id) => `/dashboard/${id}/reports`,      icon: 'chart',       exact: false },
+  { label: 'Pengaturan',  href: (id) => `/dashboard/${id}/settings`,     icon: 'settings',    exact: false },
 ]
 
 function NavIcon({ name, active, isDark }: { name: string; active: boolean; isDark: boolean }) {
   const color = active ? '#fff' : isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'
   const s = { stroke: color, strokeWidth: '1.6', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' }
   switch (name) {
-    case 'grid':    return <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="5" height="5" rx="1" {...s}/><rect x="9.5" y="1.5" width="5" height="5" rx="1" {...s}/><rect x="1.5" y="9.5" width="5" height="5" rx="1" {...s}/><rect x="9.5" y="9.5" width="5" height="5" rx="1" {...s}/></svg>
-    case 'arrows':  return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 5h10M3 8h7M3 11h5" {...s}/></svg>
-    case 'plus':    return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" {...s}/></svg>
-    case 'sparkle': return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z" {...s}/></svg>
-    case 'target':  return <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" {...s}/><circle cx="8" cy="8" r="3" {...s}/><circle cx="8" cy="8" r="1" fill={color} stroke="none"/></svg>
-    case 'chart':   return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 12V8M6 12V5M10 12V7M14 12V3" {...s}/></svg>
-    case 'settings':return <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" {...s}/><path d="M8 1.5v1.2M8 13.3v1.2M1.5 8h1.2M13.3 8h1.2M3.4 3.4l.85.85M11.75 11.75l.85.85M3.4 12.6l.85-.85M11.75 4.25l.85-.85" {...s}/></svg>
-    default:        return null
+    case 'grid':      return <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="5" height="5" rx="1" {...s}/><rect x="9.5" y="1.5" width="5" height="5" rx="1" {...s}/><rect x="1.5" y="9.5" width="5" height="5" rx="1" {...s}/><rect x="9.5" y="9.5" width="5" height="5" rx="1" {...s}/></svg>
+    case 'arrows':    return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 5h10M3 8h7M3 11h5" {...s}/></svg>
+    case 'plus':      return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" {...s}/></svg>
+    case 'sparkle':   return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z" {...s}/></svg>
+    case 'target':    return <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" {...s}/><circle cx="8" cy="8" r="3" {...s}/><circle cx="8" cy="8" r="1" fill={color} stroke="none"/></svg>
+    case 'debt':      return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 4h12M2 8h8" {...s}/><path d="M10 10l3 2-3 2" {...s}/><path d="M13 12H8" {...s}/></svg>
+    case 'inventory': return <svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="4" rx="1" {...s}/><rect x="2" y="9" width="5" height="5" rx="1" {...s}/><path d="M10 11h4M12 9v4" {...s}/></svg>
+    case 'chart':     return <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 12V8M6 12V5M10 12V7M14 12V3" {...s}/></svg>
+    case 'settings':  return <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" {...s}/><path d="M8 1.5v1.2M8 13.3v1.2M1.5 8h1.2M13.3 8h1.2M3.4 3.4l.85.85M11.75 11.75l.85.85M3.4 12.6l.85-.85M11.75 4.25l.85-.85" {...s}/></svg>
+    default:          return null
   }
 }
 
@@ -67,9 +80,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const businessId = params.businessId as string | undefined
   const [signingOut, setSigningOut] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [featureConfig, setFeatureConfig] = useState<Record<string, boolean>>({})
   const { isDark } = useAppTheme()
 
-  const isActive = (item: typeof NAV_ITEMS[0]) => {
+  // Load feature config saat businessId berubah
+  useEffect(() => {
+    if (!businessId) return
+    getFeatureConfig(businessId).then((config) => {
+      setFeatureConfig(config as unknown as Record<string, boolean>)
+    }).catch(() => {})
+  }, [businessId])
+
+  // Filter nav items berdasarkan feature config
+  const navItems = BASE_NAV_ITEMS.filter((item) => {
+    if (!item.featureKey) return true
+    // Hutang dan piutang: tampilkan jika salah satunya aktif
+    if (item.featureKey === 'enablePayables') {
+      return featureConfig['enablePayables'] || featureConfig['enableReceivables']
+    }
+    return featureConfig[item.featureKey] !== false
+  })
+
+  const isActive = (item: NavItem) => {
     if (!businessId) return false
     const href = item.href(businessId)
     return item.exact ? pathname === href : pathname.startsWith(href)
@@ -143,7 +175,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               Bisnis Aktif
             </p>
             <nav className="space-y-0.5">
-              {NAV_ITEMS.map((item) => {
+              {navItems.map((item) => {
                 const href = item.href(businessId)
                 const active = isActive(item)
                 return (

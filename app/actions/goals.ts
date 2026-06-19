@@ -3,7 +3,7 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { goal, budget, transaction } from '@/lib/db/schema'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, gte, sum } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
@@ -34,19 +34,15 @@ export async function createGoal(data: {
   title: string
   description?: string
   targetAmount: number
+  startAmount?: number // berapa yang sudah ada sekarang (opsional, user bisa isi manual)
   deadline?: Date
+  autoTrackIncome?: boolean // apakah otomatis akumulasi dari income?
 }) {
   const userId = await getUserId()
   const id = nanoid()
 
-  // Hitung total income yang sudah ada sebagai starting point
-  const existingIncome = await db.query.transaction.findMany({
-    where: and(
-      eq(transaction.businessId, data.businessId),
-      eq(transaction.userId, userId),
-    ),
-  })
-  // Goals dimulai dari 0 — user tentukan sendiri progress awalnya
+  const startAmount = data.startAmount ?? 0
+
   await db.insert(goal).values({
     id,
     userId,
@@ -54,9 +50,11 @@ export async function createGoal(data: {
     title: data.title,
     description: data.description,
     targetAmount: data.targetAmount.toString(),
-    currentAmount: '0',
+    currentAmount: startAmount.toString(),
     deadline: data.deadline,
+    completed: startAmount >= data.targetAmount,
   })
+  revalidatePath(`/dashboard/${data.businessId}/goals`)
   revalidatePath(`/dashboard/${data.businessId}`)
   return { id }
 }
@@ -73,14 +71,69 @@ export async function updateGoalProgress(goalId: string, currentAmount: number) 
     .set({ currentAmount: currentAmount.toString(), completed, updatedAt: new Date() })
     .where(and(eq(goal.id, goalId), eq(goal.userId, userId)))
 
-  revalidatePath('/')
+  revalidatePath(`/dashboard/${existing.businessId}/goals`)
+  revalidatePath(`/dashboard/${existing.businessId}`)
   return { goalId, completed }
+}
+
+export async function addGoalContribution(
+  goalId: string,
+  amount: number,
+  note?: string,
+  options?: {
+    alsoRecordAsExpense?: boolean  // override config, kalau user set manual
+    businessId?: string            // diperlukan kalau alsoRecordAsExpense = true
+    userId?: string
+  }
+) {
+  const userId = await getUserId()
+  const existing = await db.query.goal.findFirst({
+    where: and(eq(goal.id, goalId), eq(goal.userId, userId)),
+  })
+  if (!existing) throw new Error('Goal not found')
+  if (existing.completed) throw new Error('Target sudah tercapai')
+
+  const newAmount = parseFloat(existing.currentAmount) + amount
+  const completed = newAmount >= parseFloat(existing.targetAmount)
+
+  await db.update(goal)
+    .set({ currentAmount: newAmount.toString(), completed, updatedAt: new Date() })
+    .where(and(eq(goal.id, goalId), eq(goal.userId, userId)))
+
+  // Jika diset untuk juga catat sebagai pengeluaran
+  const bizId = options?.businessId || existing.businessId
+  let transactionId: string | undefined
+
+  if (options?.alsoRecordAsExpense && bizId) {
+    const txId = nanoid()
+    await db.insert(transaction).values({
+      id: txId,
+      businessId: bizId,
+      userId,
+      inputByUserId: userId,
+      amount: amount.toString(),
+      transaction_type: 'expense',
+      description: note || `Tabungan: ${existing.title}`,
+      categoryName: 'Tabungan/Goal',
+      source: 'manual',
+    })
+    transactionId = txId
+  }
+
+  revalidatePath(`/dashboard/${bizId}/goals`)
+  if (bizId) revalidatePath(`/dashboard/${bizId}`)
+  return { goalId, completed, newAmount, transactionId }
 }
 
 export async function deleteGoal(goalId: string) {
   const userId = await getUserId()
+  const existing = await db.query.goal.findFirst({
+    where: and(eq(goal.id, goalId), eq(goal.userId, userId)),
+  })
+  if (!existing) throw new Error('Goal not found')
+
   await db.delete(goal).where(and(eq(goal.id, goalId), eq(goal.userId, userId)))
-  revalidatePath('/')
+  revalidatePath(`/dashboard/${existing.businessId}/goals`)
   return { goalId }
 }
 
@@ -131,7 +184,11 @@ export async function upsertBudget(data: {
 
 export async function deleteBudget(budgetId: string) {
   const userId = await getUserId()
+  const existing = await db.query.budget.findFirst({
+    where: and(eq(budget.id, budgetId), eq(budget.userId, userId)),
+  })
+  if (!existing) throw new Error('Budget not found')
   await db.delete(budget).where(and(eq(budget.id, budgetId), eq(budget.userId, userId)))
-  revalidatePath('/')
+  revalidatePath(`/dashboard/${existing.businessId}/goals`)
   return { budgetId }
 }

@@ -48,7 +48,8 @@ export async function createTransaction(
   transactionType: 'expense' | 'income' = 'expense',
   tags?: string[],
   notes?: string,
-  receiptUrl?: string
+  receiptUrl?: string,
+  categoryName?: string
 ) {
   const userId = await getUserId()
 
@@ -92,6 +93,7 @@ export async function createTransaction(
     transaction_type: transactionType,
     description: description.trim(),
     categoryId: categoryId && categoryId.length > 10 ? categoryId : undefined,
+    categoryName: categoryName?.trim() || undefined,
     source,
     receipt_url: receiptUrl,
     tags: tags && tags.length > 0 ? tags : undefined,

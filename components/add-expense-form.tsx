@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-// Kategori default untuk pengeluaran (label saja, tidak disimpan sebagai FK)
+// Kategori default untuk pengeluaran
 const DEFAULT_EXPENSE_CATEGORIES = [
   { value: 'groceries', label: '🛒 Bahan Makanan' },
   { value: 'transportation', label: '🚗 Transportasi' },
@@ -48,15 +48,18 @@ type DbCategory = {
 interface AddExpenseFormProps {
   businessId: string
   categories?: DbCategory[]
+  accountType?: string // 'personal' | 'business'
 }
 
-export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormProps) {
+export function AddExpenseForm({ businessId, categories = [], accountType = 'business' }: AddExpenseFormProps) {
   const router = useRouter()
+  const isPersonal = accountType === 'personal'
+
   const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
-  // '__none__' berarti tidak ada kategori dipilih (simpan sebagai null/undefined)
   const [categoryValue, setCategoryValue] = useState('__none__')
+  const [customCategory, setCustomCategory] = useState('') // untuk kategori kustom langsung
   const [notes, setNotes] = useState('')
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const [receiptFileName, setReceiptFileName] = useState<string | null>(null)
@@ -106,13 +109,12 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
           const first = results[0]
           setAmount(first.amount.toString())
           setDescription(first.description)
-          // Tentukan tipe transaksi dari hasil AI
-          // extractFromMessage mengembalikan expense/income via extractExpensesFromText
-          // Kita cek dari deskripsi apakah ada kata kunci income
+
           const incomeKeywords = ['terima', 'masuk', 'penjualan', 'bayaran', 'pemasukan', 'pendapatan', 'income']
           const isIncome = incomeKeywords.some(k => transcript.toLowerCase().includes(k))
           setTransactionType(isIncome ? 'income' : 'expense')
 
+          // Coba match ke kategori DB dulu
           const matchedDb = categories.find(
             (c) => c.type === first.category || c.name.toLowerCase() === first.category?.toLowerCase()
           )
@@ -120,11 +122,16 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
             setCategoryValue(`db:${matchedDb.id}`)
           } else {
             const matchedDefault = DEFAULT_EXPENSE_CATEGORIES.find((c) => c.value === first.category)
-            setCategoryValue(matchedDefault ? `default:${matchedDefault.value}` : '__none__')
+            if (matchedDefault) {
+              setCategoryValue(`default:${matchedDefault.value}`)
+            } else if (first.category && first.category !== 'other') {
+              // Set sebagai kategori kustom
+              setCategoryValue('__custom__')
+              setCustomCategory(first.category)
+            }
           }
           setVoiceSuccess(true)
         } else {
-          // Tidak ada transaksi terdeteksi — isi deskripsi saja biar user bisa edit manual
           setDescription(transcript)
           setError('AI tidak mendeteksi nominal. Silakan isi jumlah secara manual.')
         }
@@ -147,10 +154,7 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
       }
     }
 
-    recognition.onend = () => {
-      setIsRecording(false)
-    }
-
+    recognition.onend = () => { setIsRecording(false) }
     recognition.start()
   }, [categories])
 
@@ -159,10 +163,10 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
     setIsRecording(false)
   }, [])
 
-  // Reset kategori saat ganti tipe transaksi
   const handleTypeChange = (type: 'expense' | 'income') => {
     setTransactionType(type)
     setCategoryValue('__none__')
+    setCustomCategory('')
     setVoiceSuccess(false)
     setVoiceTranscript(null)
   }
@@ -192,7 +196,6 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
         setAmount(first.amount.toString())
         setDescription(first.description)
         setTransactionType('expense')
-        // Coba cocokkan kategori dari hasil scan dengan kategori DB atau default
         const matchedDb = categories.find(
           (c) => c.type === first.category || c.name.toLowerCase() === first.category?.toLowerCase()
         )
@@ -224,24 +227,30 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
       setError('Masukkan deskripsi transaksi.')
       return
     }
+    // Validasi kategori kustom
+    if (categoryValue === '__custom__' && !customCategory.trim()) {
+      setError('Masukkan nama kategori kustom.')
+      return
+    }
 
     setLoading(true)
     try {
-      // Tentukan categoryId yang valid (hanya ID dari DB, bukan enum string)
+      // Resolve categoryId dan categoryName
       let categoryId: string | undefined = undefined
+      let categoryName: string | undefined = undefined
+
       if (categoryValue.startsWith('db:')) {
         categoryId = categoryValue.replace('db:', '')
-      }
-
-      // Kalau kategori default dipilih, tambahkan ke notes sebagai konteks
-      let finalNotes = notes.trim()
-      if (categoryValue.startsWith('default:')) {
-        const defaultKey = categoryValue.replace('default:', '')
+        const dbCat = categories.find(c => c.id === categoryId)
+        categoryName = dbCat?.name
+      } else if (categoryValue.startsWith('default:')) {
+        const key = categoryValue.replace('default:', '')
         const allDefaults = [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES]
-        const defaultCat = allDefaults.find((c) => c.value === defaultKey)
-        if (defaultCat && !finalNotes) {
-          finalNotes = `Kategori: ${defaultCat.label.replace(/^[^\s]+\s/, '')}`
-        }
+        const found = allDefaults.find(c => c.value === key)
+        // Hapus emoji di depan label
+        categoryName = found?.label.replace(/^[^\s]+\s/, '') || key
+      } else if (categoryValue === '__custom__' && customCategory.trim()) {
+        categoryName = customCategory.trim()
       }
 
       const result = await createTransaction(
@@ -252,15 +261,14 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
         'manual',
         transactionType,
         [],
-        finalNotes || undefined,
-        undefined
+        notes.trim() || undefined,
+        undefined,
+        categoryName
       )
 
-      // Tampilkan budget alert jika ada, sebelum redirect
       if (result.budgetAlerts && result.budgetAlerts.length > 0) {
         setBudgetAlerts(result.budgetAlerts)
         setLoading(false)
-        // Redirect setelah 3 detik agar user sempat baca alert
         setTimeout(() => {
           router.push(`/dashboard/${businessId}`)
           router.refresh()
@@ -276,51 +284,36 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
   }
 
   // Bangun daftar opsi kategori
-  // Prioritas: kategori dari DB bisnis → kategori default
-  const dbCategories = categories.filter((c) => {
-    if (transactionType === 'expense') {
-      return ['groceries', 'transportation', 'utilities', 'entertainment', 'dining',
-        'shopping', 'healthcare', 'education', 'office_supplies', 'other'].includes(c.type)
-    }
-    return true // untuk income, tampilkan semua kategori DB
-  })
-
-  const hasDbCategories = dbCategories.length > 0
-  const defaultCategories = transactionType === 'expense'
-    ? DEFAULT_EXPENSE_CATEGORIES
-    : DEFAULT_INCOME_CATEGORIES
+  const hasDbCategories = categories.length > 0
+  const defaultCategories = transactionType === 'expense' ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES
 
   return (
     <div className="w-full max-w-2xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground">Tambah Transaksi</h1>
-        <p className="text-muted-foreground mt-1">Catat pemasukan atau pengeluaran bisnis Anda</p>
+        <p className="text-muted-foreground mt-1">
+          {isPersonal ? 'Catat pemasukan atau pengeluaran Anda' : 'Catat pemasukan atau pengeluaran bisnis Anda'}
+        </p>
       </div>
 
       {/* Type toggle */}
       <div className="flex rounded-xl border border-border bg-muted p-1 mb-6">
-        <button
-          type="button"
-          onClick={() => handleTypeChange('expense')}
-          className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-all ${
-            transactionType === 'expense'
-              ? 'bg-rose-500 text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          ↓ Pengeluaran
-        </button>
-        <button
-          type="button"
-          onClick={() => handleTypeChange('income')}
-          className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-all ${
-            transactionType === 'income'
-              ? 'bg-emerald-500 text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          ↑ Pemasukan
-        </button>
+        {(['expense', 'income'] as const).map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => handleTypeChange(type)}
+            className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-all ${
+              transactionType === type
+                ? type === 'expense'
+                  ? 'bg-rose-500 text-white shadow-sm'
+                  : 'bg-emerald-500 text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {type === 'expense' ? '↓ Pengeluaran' : '↑ Pemasukan'}
+          </button>
+        ))}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -350,8 +343,8 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
             id="description"
             placeholder={
               transactionType === 'expense'
-                ? 'Contoh: Beli bahan baku kopi, Bayar listrik, dll.'
-                : 'Contoh: Penjualan hari ini, Pembayaran jasa, dll.'
+                ? isPersonal ? 'Contoh: Beli kopi, Bensin, Makan siang' : 'Contoh: Beli bahan baku, Bayar listrik'
+                : isPersonal ? 'Contoh: Gaji bulan ini, Freelance project' : 'Contoh: Penjualan hari ini, Pembayaran jasa'
             }
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -362,24 +355,34 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
 
         {/* Category */}
         <div className="space-y-1.5">
-          <Label htmlFor="category">
-            Kategori
-            <span className="text-muted-foreground font-normal ml-1">(opsional)</span>
-          </Label>
-          <Select value={categoryValue} onValueChange={setCategoryValue}>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="category">
+              Kategori
+              <span className="text-muted-foreground font-normal ml-1">(opsional)</span>
+            </Label>
+            {!hasDbCategories && (
+              <a
+                href={`/dashboard/${businessId}/settings`}
+                className="text-xs text-primary hover:underline"
+              >
+                + Buat kategori kustom →
+              </a>
+            )}
+          </div>
+          <Select value={categoryValue} onValueChange={(v) => { setCategoryValue(v); if (v !== '__custom__') setCustomCategory('') }}>
             <SelectTrigger id="category" className="h-11">
               <SelectValue placeholder="Pilih kategori..." />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">— Tanpa Kategori —</SelectItem>
 
-              {/* Kategori dari DB bisnis (jika ada) */}
+              {/* Kategori custom dari DB bisnis */}
               {hasDbCategories && (
                 <>
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Kategori Bisnis Anda
                   </div>
-                  {dbCategories.map((cat) => (
+                  {categories.map((cat) => (
                     <SelectItem key={cat.id} value={`db:${cat.id}`}>
                       {cat.icon ? `${cat.icon} ` : ''}{cat.name}
                     </SelectItem>
@@ -396,15 +399,21 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
                   {cat.label}
                 </SelectItem>
               ))}
+
+              {/* Ketik sendiri */}
+              <SelectItem value="__custom__">✏️ Ketik kategori sendiri...</SelectItem>
             </SelectContent>
           </Select>
-          {!hasDbCategories && (
-            <p className="text-xs text-muted-foreground">
-              Buat kategori kustom di{' '}
-              <a href={`/dashboard/${businessId}/settings`} className="text-primary hover:underline">
-                Pengaturan Bisnis
-              </a>
-            </p>
+
+          {/* Input kategori kustom langsung */}
+          {categoryValue === '__custom__' && (
+            <Input
+              placeholder="Contoh: Bahan Baku, Gaji Karyawan, Sewa Tempat..."
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              className="h-10 mt-2"
+              autoFocus
+            />
           )}
         </div>
 
@@ -413,7 +422,7 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
           <Label htmlFor="notes">Catatan (Opsional)</Label>
           <Input
             id="notes"
-            placeholder="Informasi tambahan tentang transaksi ini"
+            placeholder="Informasi tambahan..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="h-11"
@@ -422,11 +431,9 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
 
         {/* Voice input */}
         <div className={`rounded-xl border border-dashed p-5 transition-colors ${
-          isRecording
-            ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20'
-            : voiceSuccess
-            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/20'
-            : 'border-border bg-muted/30'
+          isRecording ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20'
+          : voiceSuccess ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/20'
+          : 'border-border bg-muted/30'
         }`}>
           <p className="text-sm font-medium text-foreground mb-3">🎙️ Input Suara (Opsional)</p>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -448,7 +455,8 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Ucapkan transaksi seperti <span className="font-medium">"beli bahan baku kopi 450 ribu"</span> atau <span className="font-medium">"terima pembayaran 1.2 juta"</span>
+                  Ucapkan seperti{' '}
+                  <span className="font-medium">"{transactionType === 'expense' ? 'beli bahan baku kopi 450 ribu' : 'terima pembayaran 1.2 juta'}"</span>
                 </p>
               )}
             </div>
@@ -459,29 +467,17 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
               disabled={isProcessingVoice}
               className={`shrink-0 gap-2 ${voiceSuccess && !isRecording ? 'border-emerald-400 text-emerald-700' : ''}`}
             >
-              {isProcessingVoice ? (
-                <>
-                  <span className="animate-spin">⏳</span> Memproses...
-                </>
-              ) : isRecording ? (
-                <>
-                  <span className="h-2 w-2 rounded-sm bg-white inline-block" /> Stop
-                </>
-              ) : voiceSuccess ? (
-                <>✓ Berhasil</>
-              ) : (
-                <>🎙️ Rekam Suara</>
-              )}
+              {isProcessingVoice ? '⏳ Memproses...' : isRecording ? '■ Stop' : voiceSuccess ? '✓ Berhasil' : '🎙️ Rekam Suara'}
             </Button>
           </div>
           {voiceSuccess && (
-            <p className="text-xs text-emerald-600 mt-2 font-medium">✓ Data berhasil diekstrak dari suara — periksa dan sesuaikan jika perlu</p>
+            <p className="text-xs text-emerald-600 mt-2 font-medium">✓ Data diekstrak dari suara — periksa dan sesuaikan jika perlu</p>
           )}
         </div>
 
         {/* Receipt upload */}
         <div className="rounded-xl border border-dashed border-border bg-muted/30 p-5">
-          <p className="text-sm font-medium text-foreground mb-3">📷 Scan Struk (Opsional)</p>
+          <p className="text-sm font-medium text-foreground mb-3">📷 Scan Struk / Bukti Transfer (Opsional)</p>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
               <input
@@ -502,7 +498,7 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
               disabled={scanning || !receiptPreview}
               className="shrink-0"
             >
-              {scanning ? 'Memindai...' : scanSuccess ? '✓ Berhasil' : 'Scan AI'}
+              {scanning ? 'Memindai...' : scanSuccess ? '✓ Berhasil' : '🔍 Scan AI'}
             </Button>
           </div>
           {scanSuccess && (
@@ -539,23 +535,11 @@ export function AddExpenseForm({ businessId, categories = [] }: AddExpenseFormPr
           <Button
             type="submit"
             disabled={loading}
-            className={`flex-1 h-11 font-semibold ${
-              transactionType === 'income'
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : ''
-            }`}
+            className={`flex-1 h-11 font-semibold ${transactionType === 'income' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
           >
-            {loading
-              ? 'Menyimpan...'
-              : `Simpan ${transactionType === 'expense' ? 'Pengeluaran' : 'Pemasukan'}`}
+            {loading ? 'Menyimpan...' : `Simpan ${transactionType === 'expense' ? 'Pengeluaran' : 'Pemasukan'}`}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.back()}
-            disabled={loading}
-            className="h-11 px-6"
-          >
+          <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading} className="h-11 px-6">
             Batal
           </Button>
         </div>

@@ -36,8 +36,18 @@ export default function PersonalSetupPage() {
     setError(null)
     try {
       const { businessId } = await savePersonalDetails(formData.name, formData.currency, formData.timezone)
+      // Personal: aktifkan hanya Goals & Budget, matikan fitur bisnis
+      const { initFeatureConfig } = await import('@/app/actions/features')
+      await initFeatureConfig(businessId, 'personal', {
+        enableGoals: true,
+        enableBudget: true,
+        enablePayables: false,
+        enableReceivables: false,
+        enableInventory: false,
+        enableTelegram: true,
+        enableTeam: false,
+      })
       await completeOnboarding()
-      // Personal langsung ke dashboard bisnis mereka
       router.push(`/dashboard/${businessId}`)
     } catch (err) {
       setError('Terjadi kesalahan. Silakan coba lagi.')

@@ -2,31 +2,25 @@ const { Pool } = require('pg')
 const fs = require('fs')
 const path = require('path')
 
-// Load env
-const envFile = path.join(__dirname, '../.env.local')
-let dbUrl = process.env.DATABASE_URL
-if (!dbUrl && fs.existsSync(envFile)) {
-  const content = fs.readFileSync(envFile, 'utf8')
-  const match = content.match(/DATABASE_URL="?([^"\n]+)"?/)
-  if (match) dbUrl = match[1]
-}
+const dbUrl = process.env.DATABASE_URL
+if (!dbUrl) { console.error('DATABASE_URL not set'); process.exit(1) }
 
-if (!dbUrl) {
-  console.error('DATABASE_URL not found')
-  process.exit(1)
-}
+const sql = fs.readFileSync(path.join(__dirname, 'migrate_add_missing_columns.sql'), 'utf8')
 
-const pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
-const sql = fs.readFileSync(path.join(__dirname, 'migrate_plan_column.sql'), 'utf8')
+const pool = new Pool({
+  connectionString: dbUrl,
+  ssl: { rejectUnauthorized: false },
+})
 
 pool.query(sql)
-  .then(results => {
-    const last = Array.isArray(results) ? results[results.length - 1] : results
-    console.log('Migration result:', last.rows)
+  .then((r) => {
+    console.log('✅ Migration berhasil!')
+    if (r.rows) console.log(r.rows)
     pool.end()
+    process.exit(0)
   })
-  .catch(err => {
-    console.error('Migration error:', err.message)
+  .catch((e) => {
+    console.error('❌ Migration gagal:', e.message)
     pool.end()
     process.exit(1)
   })
