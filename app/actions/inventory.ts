@@ -1,24 +1,14 @@
 'use server'
 
-import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { inventoryItem, inventoryLog } from '@/lib/db/schema'
 import { and, eq, desc } from 'drizzle-orm'
-import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
 import { getBusinessAccess } from './members'
+import { getSessionUserId } from '@/lib/session'
 
-async function getUserId() {
-  const h = await headers()
-  const c = await cookies()
-  const cookieString = c.getAll().map((ck) => `${ck.name}=${ck.value}`).join('; ')
-  const reqHeaders = new Headers(h as any)
-  if (cookieString) reqHeaders.set('cookie', cookieString)
-  const session = await auth.api.getSession({ headers: reqHeaders })
-  if (!session?.user) throw new Error('Unauthorized')
-  return session.user.id
-}
+const getUserId = getSessionUserId
 
 export async function getInventoryItems(businessId: string) {
   const userId = await getUserId()

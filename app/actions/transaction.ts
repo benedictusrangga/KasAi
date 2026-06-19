@@ -1,14 +1,14 @@
 'use server'
 
-import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { transaction, business, user, businessMember, budget } from '@/lib/db/schema'
-import { and, eq, desc, gte, count, or } from 'drizzle-orm'
-import { headers, cookies } from 'next/headers'
+import { transaction, business, budget } from '@/lib/db/schema'
+import { and, eq, desc, gte, count } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
-import { getPlan, isLimitReached } from '@/lib/plan-limits'
+import { getPlan } from '@/lib/plan-limits'
 import { getBusinessAccess } from './members'
+import { getSessionUserId } from '@/lib/session'
+import { enforceAndGetPlan } from '@/lib/plan-enforcement'
 
 const CATEGORY_LABELS: Record<string, string> = {
   groceries: 'Bahan Makanan', transportation: 'Transportasi', utilities: 'Utilitas',
@@ -16,16 +16,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   healthcare: 'Kesehatan', education: 'Pendidikan', office_supplies: 'Perlengkapan Kantor', other: 'Lainnya',
 }
 
-async function getUserId() {
-  const h = await headers()
-  const c = await cookies()
-  const cookieString = c.getAll().map((ck) => `${ck.name}=${ck.value}`).join('; ')
-  const reqHeaders = new Headers(h as any)
-  if (cookieString) reqHeaders.set('cookie', cookieString)
-  const session = await auth.api.getSession({ headers: reqHeaders })
-  if (!session?.user) throw new Error('Unauthorized')
-  return session.user.id
-}
+const getUserId = getSessionUserId
+
+/** Nanoid menghasilkan 21 karakter. UUID adalah 36 karakter.
+ *  Semua categoryId dari DB adalah nanoid. Default category keys seperti
+ *  "groceries", "other", dll maksimal 14 karakter — jauh di bawah 21.
+ *  Gunakan threshold 16 agar aman untuk semua kasus. */
+const VALID_CATEGORY_ID_MIN_LENGTH = 16
 
 export async function createTransaction(
   businessId: string,
@@ -57,12 +54,9 @@ export async function createTransaction(
   if (isNaN(amount) || amount <= 0) throw new Error('Jumlah harus lebih dari 0')
   if (!description?.trim()) throw new Error('Deskripsi tidak boleh kosong')
 
-  // Enforce plan limits — ambil owner user sekaligus
-  const ownerUser = await db.query.user.findFirst({
-    where: eq(user.id, ownerId),
-    columns: { plan: true },
-  })
-  const plan = getPlan(ownerUser?.plan)
+  // Enforce plan limits — cek expiry sekaligus
+  const activePlan = await enforceAndGetPlan(ownerId)
+  const plan = getPlan(activePlan)
 
   if (plan.maxTxPerMonth !== Infinity) {
     const now = new Date()
@@ -88,7 +82,7 @@ export async function createTransaction(
     amount: amount.toFixed(2),
     transaction_type: transactionType,
     description: description.trim(),
-    categoryId: categoryId && categoryId.length > 10 ? categoryId : undefined,
+    categoryId: categoryId && categoryId.length >= VALID_CATEGORY_ID_MIN_LENGTH ? categoryId : undefined,
     categoryName: categoryName?.trim() || undefined,
     source,
     receipt_url: receiptUrl,

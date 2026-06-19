@@ -1,23 +1,14 @@
 'use server'
 
-import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { business, category, businessProducts, user, businessMember } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
-import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
+import { getSessionUserId } from '@/lib/session'
+import { getPlan, canAddBusiness } from '@/lib/plan-limits'
 
-async function getUserId() {
-  const h = await headers()
-  const c = await cookies()
-  const cookieString = c.getAll().map((ck) => `${ck.name}=${ck.value}`).join('; ')
-  const reqHeaders = new Headers(h as any)
-  if (cookieString) reqHeaders.set('cookie', cookieString)
-  const session = await auth.api.getSession({ headers: reqHeaders })
-  if (!session?.user) throw new Error('Unauthorized')
-  return session.user.id
-}
+const getUserId = getSessionUserId
 
 export async function createBusiness(
   name: string,
@@ -26,12 +17,21 @@ export async function createBusiness(
 ) {
   const userId = await getUserId()
 
-  // Cek accountType — personal hanya boleh 1 bisnis
   const currentUser = await db.query.user.findFirst({ where: eq(user.id, userId) })
+  const existing = await db.query.business.findMany({ where: eq(business.userId, userId) })
+
+  // Cek accountType — personal hanya boleh 1 bisnis
   if (currentUser?.accountType === 'personal') {
-    const existing = await db.query.business.findMany({ where: eq(business.userId, userId) })
     if (existing.length >= 1) {
       throw new Error('Akun personal hanya dapat memiliki 1 bisnis. Upgrade ke akun bisnis untuk menambah lebih banyak.')
+    }
+  } else {
+    // Enforce plan maxBusinesses untuk akun bisnis
+    const plan = getPlan(currentUser?.plan)
+    if (!canAddBusiness(existing.length, currentUser?.plan)) {
+      throw new Error(
+        `LIMIT_REACHED:Batas ${plan.maxBusinesses === Infinity ? 'tidak terbatas' : plan.maxBusinesses} bisnis untuk plan ${plan.name} sudah tercapai. Upgrade plan untuk menambah lebih banyak bisnis.`
+      )
     }
   }
 

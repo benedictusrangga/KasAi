@@ -134,9 +134,6 @@ importers:
       jspdf-autotable:
         specifier: ^5.0.8
         version: 5.0.8(jspdf@4.2.1)
-      kysely:
-        specifier: 0.28.17
-        version: 0.28.17
       lucide-react:
         specifier: ^0.564.0
         version: 0.564.0(react@19.2.4)

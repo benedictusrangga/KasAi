@@ -4,6 +4,7 @@ import { user } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { enforceAndGetPlan } from '@/lib/plan-enforcement'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,14 +18,19 @@ export async function GET() {
 
     const currentUser = await db.query.user.findFirst({
       where: eq(user.id, session.user.id),
-      columns: { id: true, accountType: true, name: true, plan: true },
+      columns: { id: true, accountType: true, name: true, plan: true, planExpiresAt: true },
     })
+
+    // Enforce plan expiry setiap kali client load dashboard
+    // Ini memastikan plan di-downgrade tepat waktu tanpa perlu cron
+    const activePlan = await enforceAndGetPlan(session.user.id)
 
     return NextResponse.json({
       id: currentUser?.id,
       name: currentUser?.name,
       accountType: currentUser?.accountType || 'personal',
-      plan: currentUser?.plan || 'free',
+      plan: activePlan,
+      planExpiresAt: currentUser?.planExpiresAt ?? null,
     })
   } catch {
     return NextResponse.json({ accountType: null }, { status: 500 })
