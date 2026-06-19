@@ -7,6 +7,8 @@ import { eq } from 'drizzle-orm'
 import { headers, cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
+import type { FeatureConfig } from '@/lib/feature-config'
+import { getDefaultFeatureConfig } from '@/lib/feature-config'
 
 async function getUserId() {
   const h = await headers()
@@ -19,50 +21,12 @@ async function getUserId() {
   return session.user.id
 }
 
-export type FeatureConfig = {
-  enableInventory: boolean
-  enablePayables: boolean
-  enableReceivables: boolean
-  enableBudget: boolean
-  enableGoals: boolean
-  enableTelegram: boolean
-  enableTeam: boolean
-  goalContributionAsExpense: boolean
-}
-
-// Default config berdasarkan accountType
-export function getDefaultFeatureConfig(accountType: 'personal' | 'business'): FeatureConfig {
-  if (accountType === 'personal') {
-    return {
-      enableInventory: false,
-      enablePayables: false,
-      enableReceivables: false,
-      enableBudget: true,
-      enableGoals: true,
-      enableTelegram: true,
-      enableTeam: false,
-      goalContributionAsExpense: false,
-    }
-  }
-  return {
-    enableInventory: false, // opt-in, tidak semua bisnis butuh
-    enablePayables: true,
-    enableReceivables: true,
-    enableBudget: true,
-    enableGoals: true,
-    enableTelegram: true,
-    enableTeam: false,      // opt-in
-    goalContributionAsExpense: false,
-  }
-}
-
 export async function getFeatureConfig(businessId: string): Promise<FeatureConfig> {
   const existing = await db.query.userFeatureConfig.findFirst({
     where: eq(userFeatureConfig.businessId, businessId),
   })
 
   if (!existing) {
-    // Return default kalau belum dikonfigurasi
     return getDefaultFeatureConfig('business')
   }
 
@@ -114,7 +78,6 @@ export async function initFeatureConfig(
   const defaults = getDefaultFeatureConfig(accountType)
   const config = { ...defaults, ...customConfig }
 
-  // Upsert
   const existing = await db.query.userFeatureConfig.findFirst({
     where: eq(userFeatureConfig.businessId, businessId),
   })
