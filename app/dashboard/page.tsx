@@ -46,8 +46,20 @@ export default async function DashboardPage() {
   const ownedBusinesses = businesses.filter((b: any) => b._isOwner)
   const canAddBusiness = !isPersonal || ownedBusinesses.length === 0
 
-  // Personal dengan 1 bisnis (owned) → langsung ke dashboard bisnis
-  if (isPersonal && ownedBusinesses.length === 1 && businesses.length === 1) {
+  // Personal: SELALU langsung ke dashboard bisnis pertama yang dimiliki
+  // (user personal tidak perlu melihat halaman "Semua Bisnis")
+  if (isPersonal && ownedBusinesses.length >= 1) {
+    redirect(`/dashboard/${ownedBusinesses[0].id}`)
+  }
+
+  // Personal tanpa bisnis & belum setup → ke setup
+  if (isPersonal && businesses.length === 0) {
+    redirect('/setup')
+  }
+
+  // Business dengan tepat 1 bisnis yang dimiliki & tidak ada member bisnis
+  // → langsung ke bisnis itu
+  if (!isPersonal && ownedBusinesses.length === 1 && businesses.length === 1) {
     redirect(`/dashboard/${businesses[0].id}`)
   }
 
@@ -141,14 +153,14 @@ export default async function DashboardPage() {
           <p className="text-sm text-muted-foreground mb-1">
             Selamat datang kembali 👋
           </p>
-          <h1 className="text-3xl font-bold text-foreground">Semua Bisnis</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            {isPersonal ? 'Keuangan Saya' : 'Semua Bisnis'}
+          </h1>
           <p className="text-muted-foreground mt-1">
-            Ringkasan keuangan seluruh bisnis Anda
-            {isPersonal && (
-              <span className="ml-2 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                Akun Personal
-              </span>
-            )}
+            {isPersonal
+              ? 'Ringkasan keuangan personal Anda'
+              : 'Ringkasan keuangan seluruh bisnis Anda'
+            }
           </p>
         </div>
         {canAddBusiness ? (

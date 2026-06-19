@@ -10,7 +10,6 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-
 const SOURCE_ICONS: Record<string, string> = {
   manual: '✍️',
   telegram: '💬',
@@ -33,12 +32,17 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
   const [memberMap, setMemberMap] = useState<Record<string, string>>({})
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [isOwner, setIsOwner] = useState(false)
+  const [accountType, setAccountType] = useState<string>('business')
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [filterMember, setFilterMember] = useState('all')
 
   useEffect(() => {
+    // Baca accountType dari cache localStorage
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('kasai_account_type') : null
+    if (cached) setAccountType(cached)
+
     Promise.all([
       getTransactions(businessId),
       getBusinessCategories(businessId).catch(() => []),
@@ -71,7 +75,9 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
     return acc
   }, {})
 
-  // Unique inputters for filter dropdown
+  const isPersonal = accountType === 'personal'
+
+  // Unique inputters for filter dropdown — hanya relevan untuk bisnis dengan tim
   const uniqueInputters = Array.from(
     new Set(transactions.map((t) => t.inputByUserId).filter(Boolean))
   )
@@ -97,15 +103,19 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Transaksi</h1>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">
+            {isPersonal ? 'Catatan Keuangan' : 'Transaksi'}
+          </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Semua pemasukan dan pengeluaran bisnis Anda
+            {isPersonal
+              ? 'Semua pemasukan dan pengeluaran Anda'
+              : 'Semua pemasukan dan pengeluaran bisnis Anda'}
           </p>
         </div>
         <Link href={`/dashboard/${businessId}/add-expense`}>
           <Button size="sm" className="gap-1.5">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6.5 2v9M2 6.5h9"/></svg>
-            Tambah Transaksi
+            {isPersonal ? 'Tambah Catatan' : 'Tambah Transaksi'}
           </Button>
         </Link>
       </div>
@@ -155,7 +165,8 @@ export default function TransactionsPage({ params }: { params: Promise<{ busines
             </button>
           ))}
         </div>
-        {uniqueInputters.length > 1 && (
+        {/* Filter member — hanya untuk bisnis dengan tim */}
+        {!isPersonal && uniqueInputters.length > 1 && (
           <select
             value={filterMember}
             onChange={(e) => setFilterMember(e.target.value)}

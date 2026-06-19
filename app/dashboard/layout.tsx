@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react'
 import { KasAILogo } from '@/components/logo'
 import { useAppTheme } from '@/components/theme-provider'
 import { getFeatureConfig } from '@/app/actions/features'
+import { getPlan } from '@/lib/plan-limits'
 
 type NavItem = {
   label: string
@@ -17,16 +18,25 @@ type NavItem = {
 }
 
 const BASE_NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard',   href: (id) => `/dashboard/${id}`,              icon: 'grid',        exact: true  },
-  { label: 'Transaksi',   href: (id) => `/dashboard/${id}/transactions`, icon: 'arrows',      exact: false },
-  { label: 'Tambah',      href: (id) => `/dashboard/${id}/add-expense`,  icon: 'plus',        exact: false },
-  { label: 'AI Chat',     href: (id) => `/dashboard/${id}/ai-chat`,      icon: 'sparkle',     exact: false },
-  { label: 'Goals',       href: (id) => `/dashboard/${id}/goals`,        icon: 'target',      exact: false, featureKey: 'enableGoals' },
-  { label: 'Hutang/Piutang', href: (id) => `/dashboard/${id}/payables`,  icon: 'debt',        exact: false, featureKey: 'enablePayables' },
-  { label: 'Inventaris',  href: (id) => `/dashboard/${id}/inventory`,    icon: 'inventory',   exact: false, featureKey: 'enableInventory' },
-  { label: 'Laporan',     href: (id) => `/dashboard/${id}/reports`,      icon: 'chart',       exact: false },
-  { label: 'Pengaturan',  href: (id) => `/dashboard/${id}/settings`,     icon: 'settings',    exact: false },
+  { label: 'Dashboard',      href: (id) => `/dashboard/${id}`,              icon: 'grid',      exact: true  },
+  { label: 'Transaksi',      href: (id) => `/dashboard/${id}/transactions`, icon: 'arrows',    exact: false },
+  { label: 'Tambah',         href: (id) => `/dashboard/${id}/add-expense`,  icon: 'plus',      exact: false },
+  { label: 'AI Chat',        href: (id) => `/dashboard/${id}/ai-chat`,      icon: 'sparkle',   exact: false },
+  { label: 'Goals',          href: (id) => `/dashboard/${id}/goals`,        icon: 'target',    exact: false, featureKey: 'enableGoals' },
+  { label: 'Hutang/Piutang', href: (id) => `/dashboard/${id}/payables`,     icon: 'debt',      exact: false, featureKey: 'enablePayables' },
+  { label: 'Inventaris',     href: (id) => `/dashboard/${id}/inventory`,    icon: 'inventory', exact: false, featureKey: 'enableInventory' },
+  { label: 'Laporan',        href: (id) => `/dashboard/${id}/reports`,      icon: 'chart',     exact: false },
+  { label: 'Pengaturan',     href: (id) => `/dashboard/${id}/settings`,     icon: 'settings',  exact: false },
 ]
+
+// Nav items khusus personal — terminologi berbeda
+const PERSONAL_NAV_LABEL: Record<string, string> = {
+  'Dashboard': 'Ringkasan',
+  'Transaksi': 'Catatan',
+  'Tambah':    'Tambah',
+  'Goals':     'Target & Tabungan',
+  'Laporan':   'Laporan',
+}
 
 function NavIcon({ name, active, isDark }: { name: string; active: boolean; isDark: boolean }) {
   const color = active ? '#fff' : isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'
@@ -81,6 +91,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [signingOut, setSigningOut] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [featureConfig, setFeatureConfig] = useState<Record<string, boolean>>({})
+  const [accountType, setAccountType] = useState<'personal' | 'business' | null>(null)
+  const [userPlan, setUserPlan] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
   const { isDark } = useAppTheme()
 
   // Load feature config saat businessId berubah
@@ -91,10 +104,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }).catch(() => {})
   }, [businessId])
 
+  // Load account type dari API + cache ke localStorage
+  useEffect(() => {
+    setMounted(true)
+    // Baca cache lokal dulu (instant, no flash)
+    const cached = localStorage.getItem('kasai_account_type') as 'personal' | 'business' | null
+    if (cached) setAccountType(cached)
+    const cachedPlan = localStorage.getItem('kasai_plan')
+    if (cachedPlan) setUserPlan(cachedPlan)
+
+    // Kemudian verifikasi dari server
+    fetch('/api/user/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.accountType) {
+          setAccountType(data.accountType)
+          localStorage.setItem('kasai_account_type', data.accountType)
+        }
+        if (data?.plan) {
+          setUserPlan(data.plan)
+          localStorage.setItem('kasai_plan', data.plan)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   // Filter nav items berdasarkan feature config
   const navItems = BASE_NAV_ITEMS.filter((item) => {
     if (!item.featureKey) return true
-    // Hutang dan piutang: tampilkan jika salah satunya aktif
     if (item.featureKey === 'enablePayables') {
       return featureConfig['enablePayables'] || featureConfig['enableReceivables']
     }
@@ -109,8 +146,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleSignOut = async () => {
     setSigningOut(true)
-    try { await authClient.signOut() } finally { window.location.href = '/' }
+    try {
+      await authClient.signOut()
+      localStorage.removeItem('kasai_account_type')
+      localStorage.removeItem('kasai_plan')
+    } finally {
+      window.location.href = '/'
+    }
   }
+
+  const isPersonal = mounted && accountType === 'personal'
+  // Tampilkan business nav hanya setelah mount + tahu accountType = business
+  const showBusinessNav = !mounted || accountType === 'business'
+
+  const currentPlan = mounted ? getPlan(userPlan) : null
 
   const sidebarBg    = isDark ? '#0d0d0d' : '#ffffff'
   const sidebarBorder = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)'
@@ -148,31 +197,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <ThemeToggleBtn />
         </div>
 
-        {/* Semua Bisnis */}
-        <div className="px-2 pt-3 pb-1">
-          <Link
-            href="/dashboard"
-            onClick={() => setMobileOpen(false)}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-all duration-150"
-            style={{
-              background: pathname === '/dashboard' ? hoverBg : 'transparent',
-              color: pathname === '/dashboard' ? (isDark ? '#fff' : '#000') : textNormal,
-            }}
-          >
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-              style={{ color: pathname === '/dashboard' ? (isDark ? '#fff' : '#000') : textMuted }}>
-              <path d="M2 6.5L8 2l6 4.5V14a1 1 0 01-1 1H3a1 1 0 01-1-1V6.5z"/>
-              <path d="M6 15V9h4v6"/>
-            </svg>
-            <span>Semua Bisnis</span>
-          </Link>
-        </div>
+        {/* Home link — hanya tampil untuk bisnis atau jika personal punya multiple */}
+        {showBusinessNav && (
+          <div className="px-2 pt-3 pb-1">
+            <Link
+              href="/dashboard"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-all duration-150"
+              style={{
+                background: pathname === '/dashboard' ? hoverBg : 'transparent',
+                color: pathname === '/dashboard' ? (isDark ? '#fff' : '#000') : textNormal,
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+                style={{ color: pathname === '/dashboard' ? (isDark ? '#fff' : '#000') : textMuted }}>
+                <path d="M2 6.5L8 2l6 4.5V14a1 1 0 01-1 1H3a1 1 0 01-1-1V6.5z"/>
+                <path d="M6 15V9h4v6"/>
+              </svg>
+              <span>Semua Bisnis</span>
+            </Link>
+          </div>
+        )}
 
-        {/* Business nav */}
+        {/* Business/Personal nav */}
         {businessId && (
-          <div className="px-2 pb-2 flex-1 overflow-y-auto">
-            <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: textMuted }}>
-              Bisnis Aktif
+          <div className="px-2 pb-2 flex-1 min-h-0 overflow-y-auto">
+            <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: textMuted }} suppressHydrationWarning>
+              {isPersonal ? 'Menu' : 'Bisnis Aktif'}
             </p>
             <nav className="space-y-0.5">
               {navItems.map((item) => {
@@ -193,7 +244,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                   >
                     <NavIcon name={item.icon} active={active} isDark={isDark} />
-                    <span className="font-medium">{item.label}</span>
+                    <span className="font-medium" suppressHydrationWarning>
+                      {isPersonal && PERSONAL_NAV_LABEL[item.label]
+                        ? PERSONAL_NAV_LABEL[item.label]
+                        : item.label}
+                    </span>
                   </Link>
                 )
               })}
@@ -201,22 +256,49 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         )}
 
-        <div className="flex-1" />
-
-        {/* Bottom */}
         <div className="px-2 pb-3 pt-2" style={{ borderTop: `1px solid ${sidebarBorder}` }}>
-          <Link
-            href="/"
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-all duration-150"
-            style={{ color: textNormal }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = hoverBg }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: textMuted }}>
-              <path d="M10 3L5 8l5 5"/>
-            </svg>
-            <span>Beranda</span>
-          </Link>
+          {/* Plan badge */}
+          {mounted && currentPlan && businessId && (
+            <Link
+              href={`/dashboard/${businessId}/settings?tab=plan`}
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2 mb-1 transition-all duration-150 group"
+              style={{ color: textNormal }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = hoverBg }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <span className="text-sm">🚀</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.75)' }}>
+                  {currentPlan.name}
+                </p>
+                <p className="text-[10px] truncate" style={{ color: textMuted }}>
+                  {currentPlan.priceLabel}{currentPlan.period || ''}
+                </p>
+              </div>
+              {currentPlan.id === 'free' && (
+                <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                  style={{ background: 'linear-gradient(135deg,#7C3AED,#3B82F6)', color: '#fff' }}>
+                  Upgrade
+                </span>
+              )}
+            </Link>
+          )}
+          {/* Beranda — hanya tampil untuk business, personal tidak butuh */}
+          {showBusinessNav && (
+            <Link
+              href="/"
+              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-all duration-150"
+              style={{ color: textNormal }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = hoverBg }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: textMuted }}>
+                <path d="M10 3L5 8l5 5"/>
+              </svg>
+              <span>Beranda</span>
+            </Link>
+          )}
           <button
             onClick={handleSignOut}
             disabled={signingOut}

@@ -49,7 +49,8 @@ export async function createBusiness(
     .set({ updatedAt: new Date() })
     .where(eq(user.id, userId))
 
-  revalidatePath('/')
+  revalidatePath('/dashboard')
+  revalidatePath(`/dashboard/${id}`)
   return { id, name, type }
 }
 

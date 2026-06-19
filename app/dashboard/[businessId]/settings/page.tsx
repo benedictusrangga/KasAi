@@ -50,15 +50,17 @@ export default async function SettingsPage({ params }: { params: Promise<{ busin
           featureConfig={featureConfig ?? undefined}
         />
 
-        {/* Multi-user section */}
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <MembersPanel
-            businessId={businessId}
-            businessName={biz.name}
-            isOwner={access.isOwner}
-            ownerPlan={user.plan ?? 'free'}
-          />
-        </div>
+        {/* Multi-user section — hanya untuk business account */}
+        {user.accountType !== 'personal' && (
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <MembersPanel
+              businessId={businessId}
+              businessName={biz.name}
+              isOwner={access.isOwner}
+              ownerPlan={user.plan ?? 'free'}
+            />
+          </div>
+        )}
       </div>
     )
   } catch (err) {

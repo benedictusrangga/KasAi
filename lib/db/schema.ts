@@ -6,6 +6,8 @@ import {
   decimal,
   pgEnum,
   jsonb,
+  index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
@@ -42,7 +44,10 @@ export const session = pgTable('session', {
   userId: text('userId')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-})
+}, (t) => [
+  index('session_userId_idx').on(t.userId),
+  index('session_expiresAt_idx').on(t.expiresAt),
+])
 
 export const account = pgTable('account', {
   id: text('id').primaryKey(),
@@ -67,7 +72,9 @@ export const account = pgTable('account', {
   password: text('password'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('account_userId_idx').on(t.userId),
+])
 
 export const verification = pgTable('verification', {
   id: text('id').primaryKey(),
@@ -123,7 +130,9 @@ export const business = pgTable('business', {
   logo_url: text('logo_url'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('business_userId_idx').on(t.userId),
+])
 
 // Member roles: owner (auto), admin (can input transactions), viewer (read-only)
 export const memberRoleEnum = pgEnum('member_role', ['owner', 'admin', 'viewer'])
@@ -142,7 +151,12 @@ export const businessMember = pgTable('business_member', {
   joinedAt: timestamp('joinedAt'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('bm_businessId_idx').on(t.businessId),
+  index('bm_userId_idx').on(t.userId),
+  index('bm_businessId_userId_status_idx').on(t.businessId, t.userId, t.status),
+  index('bm_email_businessId_idx').on(t.email, t.businessId),
+])
 
 export const category = pgTable('category', {
   id: text('id').primaryKey(),
@@ -153,7 +167,9 @@ export const category = pgTable('category', {
   icon: text('icon'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('category_businessId_idx').on(t.businessId),
+])
 
 export const transaction = pgTable('transaction', {
   id: text('id').primaryKey(),
@@ -171,7 +187,16 @@ export const transaction = pgTable('transaction', {
   notes: text('notes'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  // Index paling penting — hampir semua query filter by businessId
+  index('tx_businessId_idx').on(t.businessId),
+  // Untuk plan limit counting (COUNT per bulan)
+  index('tx_businessId_createdAt_idx').on(t.businessId, t.createdAt),
+  // Untuk filter by type (income/expense)
+  index('tx_businessId_type_idx').on(t.businessId, t.transaction_type),
+  // Untuk budget check per kategori
+  index('tx_businessId_categoryId_idx').on(t.businessId, t.categoryId),
+])
 
 export const report = pgTable('report', {
   id: text('id').primaryKey(),
@@ -227,7 +252,10 @@ export const goal = pgTable('goal', {
   completed: boolean('completed').notNull().default(false),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('goal_businessId_idx').on(t.businessId),
+  index('goal_userId_idx').on(t.userId),
+])
 
 export const budget = pgTable('budget', {
   id: text('id').primaryKey(),
@@ -238,7 +266,9 @@ export const budget = pgTable('budget', {
   period: text('period').notNull().default('monthly'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('budget_businessId_userId_idx').on(t.businessId, t.userId),
+])
 
 // ── Hutang (Payable — kita yang berhutang ke orang lain) ──────────────────────
 export const payable = pgTable('payable', {
@@ -251,13 +281,15 @@ export const payable = pgTable('payable', {
   paidAmount: decimal('paidAmount', { precision: 12, scale: 2 }).notNull().default('0'),
   description: text('description').notNull(),
   dueDate: timestamp('dueDate'),
-  status: text('status').notNull().default('unpaid'), // unpaid | partial | paid
+  status: text('status').notNull().default('unpaid'),
   notes: text('notes'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('payable_businessId_idx').on(t.businessId),
+  index('payable_businessId_status_idx').on(t.businessId, t.status),
+])
 
-// ── Piutang (Receivable — orang lain berhutang ke kita) ───────────────────────
 export const receivable = pgTable('receivable', {
   id: text('id').primaryKey(),
   businessId: text('businessId').notNull().references(() => business.id, { onDelete: 'cascade' }),
@@ -268,11 +300,14 @@ export const receivable = pgTable('receivable', {
   paidAmount: decimal('paidAmount', { precision: 12, scale: 2 }).notNull().default('0'),
   description: text('description').notNull(),
   dueDate: timestamp('dueDate'),
-  status: text('status').notNull().default('unpaid'), // unpaid | partial | paid
+  status: text('status').notNull().default('unpaid'),
   notes: text('notes'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('receivable_businessId_idx').on(t.businessId),
+  index('receivable_businessId_status_idx').on(t.businessId, t.status),
+])
 
 // ── Inventaris ────────────────────────────────────────────────────────────────
 export const inventoryItem = pgTable('inventory_item', {
@@ -289,7 +324,9 @@ export const inventoryItem = pgTable('inventory_item', {
   description: text('description'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('inv_item_businessId_idx').on(t.businessId),
+])
 
 export const inventoryLog = pgTable('inventory_log', {
   id: text('id').primaryKey(),
@@ -301,7 +338,10 @@ export const inventoryLog = pgTable('inventory_log', {
   note: text('note'),
   transactionId: text('transactionId').references(() => transaction.id, { onDelete: 'set null' }),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('inv_log_itemId_idx').on(t.itemId),
+  index('inv_log_businessId_idx').on(t.businessId),
+])
 
 // ── Konfigurasi fitur per bisnis ──────────────────────────────────────────────
 export const userFeatureConfig = pgTable('user_feature_config', {
@@ -332,7 +372,10 @@ export const transactionComment = pgTable('transaction_comment', {
   content: text('content').notNull(),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
+}, (t) => [
+  index('txcomment_transactionId_idx').on(t.transactionId),
+  index('txcomment_businessId_idx').on(t.businessId),
+])
 
 // ── Relations (untuk Drizzle query API dengan `with`) ─────────────────────────
 

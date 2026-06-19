@@ -27,18 +27,6 @@ async function getUserId() {
   return session.user.id
 }
 
-/**
- * Ambil userId owner dari sebuah bisnis.
- * Dipakai untuk plan limit counting — limit selalu dihitung dari owner.
- */
-async function getBusinessOwnerId(businessId: string): Promise<string> {
-  const biz = await db.query.business.findFirst({
-    where: eq(business.id, businessId),
-  })
-  if (!biz) throw new Error('Business not found')
-  return biz.userId
-}
-
 export async function createTransaction(
   businessId: string,
   amount: number,
@@ -53,19 +41,27 @@ export async function createTransaction(
 ) {
   const userId = await getUserId()
 
-  // Verifikasi akses (owner atau member admin)
+  // Verifikasi akses (owner atau member admin) + ambil owner info sekaligus
   const access = await getBusinessAccess(businessId, userId)
   if (access.role === 'viewer') throw new Error('Viewer tidak dapat menambah transaksi')
 
-  // Owner ID untuk plan limit counting
-  const ownerId = await getBusinessOwnerId(businessId)
+  // Ambil bisnis + owner dalam 1 query
+  const biz = await db.query.business.findFirst({
+    where: eq(business.id, businessId),
+    columns: { userId: true },
+  })
+  if (!biz) throw new Error('Business not found')
+  const ownerId = biz.userId
 
   // Validasi amount
   if (isNaN(amount) || amount <= 0) throw new Error('Jumlah harus lebih dari 0')
   if (!description?.trim()) throw new Error('Deskripsi tidak boleh kosong')
 
-  // Enforce plan limits (berdasarkan plan owner)
-  const ownerUser = await db.query.user.findFirst({ where: eq(user.id, ownerId) })
+  // Enforce plan limits — ambil owner user sekaligus
+  const ownerUser = await db.query.user.findFirst({
+    where: eq(user.id, ownerId),
+    columns: { plan: true },
+  })
   const plan = getPlan(ownerUser?.plan)
 
   if (plan.maxTxPerMonth !== Infinity) {

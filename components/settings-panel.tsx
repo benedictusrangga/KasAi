@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -54,7 +54,7 @@ const TABS = [
   { id: 'features',  label: '⚙️ Fitur Aktif' },
   { id: 'business',  label: '🏪 Info Bisnis' },
   { id: 'categories',label: '🏷️ Kategori' },
-  { id: 'products',  label: '📦 Produk & Layanan' },
+  { id: 'products',  label: '📦 Produk & Layanan',    businessOnly: true },
   { id: 'plan',      label: '🚀 Plan & Upgrade' },
 ]
 
@@ -87,8 +87,14 @@ type Props = {
 }
 
 export function SettingsPanel({ business, user, categories, products, txThisMonth = 0, featureConfig: initialFeatureConfig }: Props) {
+  const isPersonal = user.accountType === 'personal'
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState('profile')
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams?.get('tab')
+    if (tab && TABS.some(t => t.id === tab)) return tab
+    return 'profile'
+  })
   const [isSaving, setIsSaving] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
@@ -225,7 +231,9 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-8 overflow-x-auto">
-        {TABS.map((tab) => (
+        {TABS.filter(tab => !tab.businessOnly || !isPersonal).map((tab) => {
+          const label = tab.id === 'business' && isPersonal ? '👤 Info Personal' : tab.label
+          return (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -235,9 +243,10 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {tab.label}
+            {label}
           </button>
-        ))}
+          )
+        })}
       </div>
 
       {/* Profile & Telegram tab */}
@@ -459,11 +468,11 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
               label: '💬 Integrasi Telegram',
               desc: 'Catat transaksi langsung dari Telegram bot',
             },
-            {
+            ...(isPersonal ? [] : [{
               key: 'enableTeam',
               label: '👥 Fitur Tim (Multi-User)',
               desc: 'Undang admin atau viewer untuk membantu mencatat transaksi',
-            },
+            }]),
           ].map((feat) => {
             const isOn = featureConfig[feat.key as keyof typeof featureConfig]
             return (
@@ -549,28 +558,53 @@ export function SettingsPanel({ business, user, categories, products, txThisMont
       {activeTab === 'business' && (
         <div className="max-w-xl space-y-5">
           <div className="space-y-1.5">
-            <Label htmlFor="biz-name">Nama Bisnis</Label>
-            <Input id="biz-name" value={bizInfo.name} onChange={(e) => setBizInfo({ ...bizInfo, name: e.target.value })} className="h-11" />
+            <Label htmlFor="biz-name">
+              {isPersonal ? 'Nama Workspace' : 'Nama Bisnis'}
+            </Label>
+            <Input
+              id="biz-name"
+              value={bizInfo.name}
+              onChange={(e) => setBizInfo({ ...bizInfo, name: e.target.value })}
+              placeholder={isPersonal ? 'Contoh: Keuangan Pribadi Andi' : 'Nama bisnis Anda'}
+              className="h-11"
+            />
+            {isPersonal && (
+              <p className="text-xs text-muted-foreground">
+                Nama ini digunakan sebagai label workspace keuangan personal Anda.
+              </p>
+            )}
           </div>
-          <div className="space-y-1.5">
-            <Label>Tipe Bisnis</Label>
-            <div className="h-11 px-3 flex items-center rounded-lg border border-border bg-muted/50 text-sm text-muted-foreground">
-              {BUSINESS_TYPES.find((t) => t.value === bizInfo.type)?.label || bizInfo.type}
-              <span className="ml-auto text-xs">🔒 Diatur oleh admin</span>
+
+          {/* Tipe bisnis — hanya untuk business account */}
+          {!isPersonal && (
+            <div className="space-y-1.5">
+              <Label>Tipe Bisnis</Label>
+              <div className="h-11 px-3 flex items-center rounded-lg border border-border bg-muted/50 text-sm text-muted-foreground">
+                {BUSINESS_TYPES.find((t) => t.value === bizInfo.type)?.label || bizInfo.type}
+                <span className="ml-auto text-xs">🔒 Diatur oleh admin</span>
+              </div>
             </div>
-          </div>
+          )}
+
           <div className="space-y-1.5">
-            <Label htmlFor="biz-desc">Deskripsi</Label>
+            <Label htmlFor="biz-desc">
+              {isPersonal ? 'Catatan / Deskripsi' : 'Deskripsi'}
+            </Label>
             <Textarea
               id="biz-desc"
               value={bizInfo.description}
               onChange={(e) => setBizInfo({ ...bizInfo, description: e.target.value })}
               className="min-h-[100px]"
-              placeholder="Deskripsi singkat bisnis Anda..."
+              placeholder={
+                isPersonal
+                  ? 'Catatan singkat tentang workspace ini, misal: keuangan bulanan keluarga...'
+                  : 'Deskripsi singkat bisnis Anda...'
+              }
             />
           </div>
+
           <Button onClick={handleSaveBusiness} disabled={isSaving} className="h-11">
-            {isSaving ? 'Menyimpan...' : 'Simpan Bisnis'}
+            {isSaving ? 'Menyimpan...' : isPersonal ? 'Simpan Info Personal' : 'Simpan Bisnis'}
           </Button>
         </div>
       )}

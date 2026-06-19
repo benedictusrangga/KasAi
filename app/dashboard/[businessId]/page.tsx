@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { getBusiness } from '@/app/actions/business'
+import { getBusiness, getCurrentUser } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
 import { getGoals, getBudgets } from '@/app/actions/goals'
 import { Button } from '@/components/ui/button'
@@ -38,12 +38,15 @@ export default async function BusinessDashboardPage({
   if (!session?.user) redirect('/sign-in')
 
   try {
-    const [business, transactions, goals, budgets] = await Promise.all([
+    const [business, transactions, goals, budgets, currentUser] = await Promise.all([
       getBusiness(businessId),
       getBusinessTransactions(businessId),
       getGoals(businessId).catch(() => []),
       getBudgets(businessId).catch(() => []),
+      getCurrentUser().catch(() => null),
     ])
+
+    const isPersonal = currentUser?.accountType === 'personal'
 
     const totalExpenses = transactions
       .filter((t) => t.transaction_type === 'expense')
@@ -131,16 +134,29 @@ export default async function BusinessDashboardPage({
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-sm text-muted-foreground mb-1">
-              <Link href="/dashboard" className="hover:text-foreground transition-colors">Semua Bisnis</Link>
-              {' / '}
-              <span className="text-foreground">{business.name}</span>
+              {isPersonal ? (
+                <span className="text-foreground">Keuangan Saya</span>
+              ) : (
+                <>
+                  <Link href="/dashboard" className="hover:text-foreground transition-colors">Semua Bisnis</Link>
+                  {' / '}
+                  <span className="text-foreground">{business.name}</span>
+                </>
+              )}
             </p>
-            <h1 className="text-3xl font-bold text-foreground">{business.name}</h1>
-            <p className="text-muted-foreground mt-1 capitalize">{business.type} · {transactions.length} transaksi total</p>
+            <h1 className="text-3xl font-bold text-foreground">
+              {isPersonal ? 'Keuangan Saya' : business.name}
+            </h1>
+            <p className="text-muted-foreground mt-1 capitalize">
+              {isPersonal
+                ? `${transactions.length} transaksi total`
+                : `${business.type} · ${transactions.length} transaksi total`
+              }
+            </p>
           </div>
           <div className="flex gap-2 flex-wrap">
             <Link href={`/dashboard/${businessId}/add-expense`}>
-              <Button>+ Tambah Transaksi</Button>
+              <Button>{isPersonal ? '+ Tambah Catatan' : '+ Tambah Transaksi'}</Button>
             </Link>
             <Link href={`/dashboard/${businessId}/ai-chat`}>
               <Button variant="outline">✦ AI Chat</Button>
@@ -169,7 +185,9 @@ export default async function BusinessDashboardPage({
             </p>
           </div>
           <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Laba Bersih</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              {isPersonal ? 'Saldo' : 'Laba Bersih'}
+            </p>
             <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-primary' : 'text-rose-500'}`}>
               Rp {netProfit.toLocaleString('id-ID')}
             </p>
@@ -209,7 +227,9 @@ export default async function BusinessDashboardPage({
                 <div className="text-4xl mb-3">📭</div>
                 <p className="text-muted-foreground mb-2 font-medium">Belum ada transaksi</p>
                 <p className="text-sm text-muted-foreground mb-5">
-                  Mulai catat pemasukan atau pengeluaran bisnis Anda.
+                  {isPersonal
+                    ? 'Mulai catat pemasukan atau pengeluaran Anda.'
+                    : 'Mulai catat pemasukan atau pengeluaran bisnis Anda.'}
                 </p>
                 <div className="flex gap-2 justify-center flex-wrap">
                   <Link href={`/dashboard/${businessId}/add-expense`}>
@@ -259,7 +279,7 @@ export default async function BusinessDashboardPage({
               <div className="space-y-2">
                 <Link href={`/dashboard/${businessId}/add-expense`} className="block">
                   <Button variant="outline" className="w-full justify-start gap-3 h-10">
-                    <span>➕</span> Tambah Transaksi
+                    <span>➕</span> {isPersonal ? 'Tambah Catatan' : 'Tambah Transaksi'}
                   </Button>
                 </Link>
                 <Link href={`/dashboard/${businessId}/ai-chat`} className="block">
@@ -269,7 +289,7 @@ export default async function BusinessDashboardPage({
                 </Link>
                 <Link href={`/dashboard/${businessId}/goals`} className="block">
                   <Button variant="outline" className="w-full justify-start gap-3 h-10">
-                    <span>🎯</span> Goals & Budget
+                    <span>🎯</span> {isPersonal ? 'Target & Tabungan' : 'Goals & Budget'}
                   </Button>
                 </Link>
                 <Link href={`/dashboard/${businessId}/reports`} className="block">

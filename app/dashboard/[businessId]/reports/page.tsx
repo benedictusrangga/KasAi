@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getBusiness } from '@/app/actions/business'
+import { getBusiness, getCurrentUser } from '@/app/actions/business'
 import { getBusinessTransactions } from '@/app/actions/transaction'
 import { PdfExport } from '@/components/pdf-export'
 import { ReportsCharts } from '@/components/reports-charts'
@@ -38,8 +38,13 @@ export default async function ReportsPage({
   if (!session?.user) redirect('/sign-in')
 
   try {
-    const business = await getBusiness(businessId)
-    const allTransactions = await getBusinessTransactions(businessId)
+    const [business, allTransactions, currentUser] = await Promise.all([
+      getBusiness(businessId),
+      getBusinessTransactions(businessId),
+      getCurrentUser().catch(() => null),
+    ])
+
+    const isPersonal = currentUser?.accountType === 'personal'
 
     const now = new Date()
     const selectedYear = sp.year ? parseInt(sp.year) : now.getFullYear()
@@ -153,8 +158,12 @@ export default async function ReportsPage({
         {/* Header */}
         <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">Laporan Keuangan</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{business.name} · {periodLabel}</p>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">
+              {isPersonal ? 'Laporan Keuangan' : 'Laporan Keuangan'}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {isPersonal ? periodLabel : `${business.name} · ${periodLabel}`}
+            </p>
           </div>
           <PdfExport businessId={businessId} businessName={business.name} />
         </div>
@@ -171,10 +180,37 @@ export default async function ReportsPage({
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           {[
-            { label: 'Total Pemasukan', value: `Rp ${totalIncome.toLocaleString('id-ID')}`, color: 'text-emerald-500', dot: 'bg-emerald-500', sub: `${transactions.filter((t) => t.transaction_type === 'income').length} transaksi` },
-            { label: 'Total Pengeluaran', value: `Rp ${totalExpense.toLocaleString('id-ID')}`, color: 'text-rose-500', dot: 'bg-rose-500', sub: `${transactions.filter((t) => t.transaction_type === 'expense').length} transaksi` },
-            { label: 'Laba Bersih', value: `Rp ${netProfit.toLocaleString('id-ID')}`, color: netProfit >= 0 ? 'text-violet-500' : 'text-rose-500', dot: netProfit >= 0 ? 'bg-violet-500' : 'bg-rose-500', sub: netProfit >= 0 ? '↑ Positif' : '↓ Negatif' },
-            { label: 'Margin Laba', value: `${profitMargin}%`, color: parseFloat(profitMargin) >= 20 ? 'text-emerald-500' : 'text-amber-500', dot: parseFloat(profitMargin) >= 20 ? 'bg-emerald-500' : 'bg-amber-500', sub: `dari ${transactions.length} transaksi` },
+            {
+              label: 'Total Pemasukan',
+              value: `Rp ${totalIncome.toLocaleString('id-ID')}`,
+              color: 'text-emerald-500', dot: 'bg-emerald-500',
+              sub: `${transactions.filter((t) => t.transaction_type === 'income').length} transaksi`,
+            },
+            {
+              label: 'Total Pengeluaran',
+              value: `Rp ${totalExpense.toLocaleString('id-ID')}`,
+              color: 'text-rose-500', dot: 'bg-rose-500',
+              sub: `${transactions.filter((t) => t.transaction_type === 'expense').length} transaksi`,
+            },
+            {
+              label: isPersonal ? 'Saldo Bersih' : 'Laba Bersih',
+              value: `Rp ${netProfit.toLocaleString('id-ID')}`,
+              color: netProfit >= 0 ? 'text-violet-500' : 'text-rose-500',
+              dot: netProfit >= 0 ? 'bg-violet-500' : 'bg-rose-500',
+              sub: netProfit >= 0 ? '↑ Positif' : '↓ Negatif',
+            },
+            ...(!isPersonal ? [{
+              label: 'Margin Laba',
+              value: `${profitMargin}%`,
+              color: parseFloat(profitMargin) >= 20 ? 'text-emerald-500' : 'text-amber-500',
+              dot: parseFloat(profitMargin) >= 20 ? 'bg-emerald-500' : 'bg-amber-500',
+              sub: `dari ${transactions.length} transaksi`,
+            }] : [{
+              label: 'Total Transaksi',
+              value: `${transactions.length}`,
+              color: 'text-blue-500', dot: 'bg-blue-500',
+              sub: `selama periode ini`,
+            }]),
           ].map((kpi) => (
             <div key={kpi.label} className="rounded-2xl border border-border bg-card p-4 lg:p-5">
               <div className="flex items-center gap-1.5 mb-3">
