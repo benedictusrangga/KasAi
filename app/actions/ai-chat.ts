@@ -9,16 +9,14 @@ import { chatWithAI, extractExpensesFromText, extractExpensesFromImage } from '@
 import { getFeatureConfig } from './features'
 import {
   getOrCreateSession,
-  setPendingAction as storeSetPending,
-  getPendingAction as storeGetPending,
-  clearPendingAction as storeClearPending,
   addRecentOperation,
   getLastOperation,
 } from '@/lib/conversation-store'
-import { parseUserIntent, generateConfirmationMessage, generateSuccessMessage } from '@/lib/ai-actions'
+import { parseUserIntent, generateSuccessMessage } from '@/lib/ai-actions'
 import { executeAIAction } from '@/lib/ai-action-executor'
 import { parseEditIntent, executeEdit, executeUndo, formatEditSuccessMessage } from '@/lib/ai-edit-handler'
 import { getSessionUserId } from '@/lib/session'
+import { buildSpendingByCategory } from '@/lib/category-utils'
 
 const getUserId = getSessionUserId
 
@@ -101,12 +99,12 @@ async function buildFinancialSummary(businessId: string, userId: string) {
     date: new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
   }))
 
-  // Budget status bulan ini
-  const spendingByCategory: Record<string, number> = {}
-  thisMonth.filter((t) => t.transaction_type === 'expense').forEach((t) => {
-    const cat = t.categoryName || t.categoryId || 'other'
-    spendingByCategory[cat] = (spendingByCategory[cat] || 0) + parseFloat(t.amount)
-  })
+  // Budget status bulan ini — gunakan shared util untuk normalisasi category key
+  const spendingByCategory = buildSpendingByCategory(
+    thisMonth
+      .filter((t) => t.transaction_type === 'expense')
+      .map((t) => ({ categoryName: t.categoryName, categoryId: t.categoryId, amount: t.amount }))
+  )
 
   const budgetStatus = budgets.map((b) => ({
     category: b.category,

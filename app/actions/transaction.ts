@@ -9,12 +9,10 @@ import { getPlan } from '@/lib/plan-limits'
 import { getBusinessAccess } from './members'
 import { getSessionUserId } from '@/lib/session'
 import { enforceAndGetPlan } from '@/lib/plan-enforcement'
+import { buildSpendingByCategory, CATEGORY_SLUG_TO_LABEL } from '@/lib/category-utils'
 
-const CATEGORY_LABELS: Record<string, string> = {
-  groceries: 'Bahan Makanan', transportation: 'Transportasi', utilities: 'Utilitas',
-  entertainment: 'Hiburan', dining: 'Makan & Minum', shopping: 'Belanja',
-  healthcare: 'Kesehatan', education: 'Pendidikan', office_supplies: 'Perlengkapan Kantor', other: 'Lainnya',
-}
+// CATEGORY_LABELS sudah di-import dari @/lib/category-utils sebagai CATEGORY_SLUG_TO_LABEL
+const CATEGORY_LABELS = CATEGORY_SLUG_TO_LABEL
 
 const getUserId = getSessionUserId
 
@@ -115,11 +113,11 @@ export async function createTransaction(
           ),
         })
 
-        const spentByCategory: Record<string, number> = {}
-        monthTxns.forEach((t) => {
-          const cat = t.categoryId || 'other'
-          spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
-        })
+        const spentByCategory = buildSpendingByCategory(monthTxns.map(t => ({
+          categoryName: t.categoryName,
+          categoryId: t.categoryId,
+          amount: t.amount,
+        })))
 
         for (const b of budgets) {
           const spent = spentByCategory[b.category] || 0

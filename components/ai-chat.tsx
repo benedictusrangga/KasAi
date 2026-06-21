@@ -339,7 +339,6 @@ export function AiChat({
       let actionResult: Message['actionResult'] | undefined
 
       if (isActionSuccess) {
-        // Deteksi tipe action dari content
         let actionType: string | undefined
         if (content.includes('ransaksi')) actionType = 'create_transaction'
         else if (content.includes('Goal') || content.includes('goal')) actionType = 'create_goal'
@@ -363,14 +362,27 @@ export function AiChat({
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content, actionResult }])
 
-        // Extract transaksi jika bukan action & bukan PDF
-        if (!isActionSuccess && !isActionError) {
-          const expenses = await extractFromMessage(text)
-          if (expenses.length > 0) setExtractedExpenses(expenses)
+        // Hanya extract transaksi jika ini bukan action yang sudah berhasil dieksekusi
+        // dan bukan error — supaya tidak double-trigger dan tidak munculkan card ekstra
+        if (!isActionSuccess && !isActionError && !pdfIntent.isPdf) {
+          extractFromMessage(text).then(expenses => {
+            if (expenses.length > 0) setExtractedExpenses(expenses)
+          }).catch(() => {
+            // extractFromMessage gagal tidak perlu diperlihatkan ke user
+          })
         }
       }
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Maaf, terjadi kesalahan. Silakan coba lagi.' }])
+    } catch (err) {
+      // Server action threw — tapi transaksi mungkin sudah tersimpan di server
+      // sebelum response kembali (network timeout). Tampilkan pesan yang lebih informatif.
+      const errMsg = err instanceof Error ? err.message : ''
+      const isLimitError = errMsg.includes('LIMIT_REACHED')
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: isLimitError
+          ? `❌ ${errMsg.replace('LIMIT_REACHED:', '')}`
+          : 'Maaf, koneksi bermasalah. Jika transaksi tidak tersimpan, coba kirim ulang.',
+      }])
     } finally {
       setLoading(false)
     }

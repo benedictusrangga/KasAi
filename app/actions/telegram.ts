@@ -16,14 +16,12 @@ import { parseUserIntent, generateConfirmationMessage, generateSuccessMessage } 
 import { getFeatureConfig } from './features'
 import { executeAIAction } from '@/lib/ai-action-executor'
 import { parseEditIntent, executeEdit, executeUndo, formatEditSuccessMessage } from '@/lib/ai-edit-handler'
+import { buildSpendingByCategory, CATEGORY_SLUG_TO_LABEL } from '@/lib/category-utils'
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 
-const CATEGORY_LABELS: Record<string, string> = {
-  groceries: 'Bahan Makanan', transportation: 'Transportasi', utilities: 'Utilitas',
-  entertainment: 'Hiburan', dining: 'Makan & Minum', shopping: 'Belanja',
-  healthcare: 'Kesehatan', education: 'Pendidikan', office_supplies: 'Perlengkapan Kantor', other: 'Lainnya',
-}
+// Alias untuk backward compat dengan kode yang masih pakai CATEGORY_LABELS
+const CATEGORY_LABELS = CATEGORY_SLUG_TO_LABEL
 
 function escapeHtml(text: string) {
   return text
@@ -529,11 +527,11 @@ export async function handleTelegramUpdate(update: any) {
       where: and(eq(transaction.businessId, tempBiz.id), gte(transaction.createdAt, startMonth)),
     })
 
-    const spentByCategory: Record<string, number> = {}
-    txns.filter(t => t.transaction_type === 'expense').forEach(t => {
-      const cat = t.categoryId || 'other'
-      spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
-    })
+    const spentByCategory = buildSpendingByCategory(
+      txns
+        .filter(t => t.transaction_type === 'expense')
+        .map(t => ({ categoryName: t.categoryName, categoryId: t.categoryId, amount: t.amount }))
+    )
 
     const monthLabel = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
     let msg = `🎯 <b>STATUS BUDGET — ${monthLabel}</b>\n\n`
@@ -1294,11 +1292,11 @@ export async function handleTelegramUpdate(update: any) {
           ])
 
           if (budgets.length > 0) {
-            const spentByCategory: Record<string, number> = {}
-            monthTxns.filter(t => t.transaction_type === 'expense').forEach(t => {
-              const cat = t.categoryId || 'other'
-              spentByCategory[cat] = (spentByCategory[cat] || 0) + parseFloat(t.amount)
-            })
+            const spentByCategory = buildSpendingByCategory(
+              monthTxns
+                .filter(t => t.transaction_type === 'expense')
+                .map(t => ({ categoryName: t.categoryName, categoryId: t.categoryId, amount: t.amount }))
+            )
             const alerts: string[] = []
             budgets.forEach(b => {
               const spent = spentByCategory[b.category] || 0
